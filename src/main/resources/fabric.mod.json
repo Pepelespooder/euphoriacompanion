@@ -8,8 +8,8 @@
 		"Eclipse"
 	],
 	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+		"homepage": "https://github.com/Mentalgen/euphoriacompanion",
+		"sources": "https://github.com/Mentalgen/euphoriacompanion"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/euphoriacompanion/icon.png",
