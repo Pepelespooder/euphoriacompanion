@@ -48,6 +48,7 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
+	options.compilerArgs.add("-Xlint:-options")
 	it.options.release = 8
 }
 
