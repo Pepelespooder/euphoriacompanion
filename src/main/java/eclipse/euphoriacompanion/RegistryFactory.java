@@ -1,8 +1,8 @@
 package eclipse.euphoriacompanion;
 
 import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.SemanticVersion;
 import net.fabricmc.loader.api.Version;
+import net.fabricmc.loader.api.VersionParsingException;
 
 public class RegistryFactory {
     private static final boolean IS_MODERN;
@@ -12,14 +12,14 @@ public class RegistryFactory {
         try {
             Version mcVersion = FabricLoader.getInstance()
                     .getModContainer("minecraft")
-                    .orElseThrow(() -> new RuntimeException("Minecraft mod container not found!")) // Fixed line
+                    .orElseThrow(() -> new RuntimeException("Minecraft mod container not found!"))
                     .getMetadata()
                     .getVersion();
 
-            if (mcVersion instanceof SemanticVersion) {
-                SemanticVersion semVer = (SemanticVersion) mcVersion;
-                isModern = semVer.compareTo(SemanticVersion.parse("1.19.3")) >= 0;
-            }
+            Version targetVersion = Version.parse("1.19.3");
+            isModern = mcVersion.compareTo(targetVersion) >= 0;
+        } catch (VersionParsingException e) {
+            System.err.println("Failed to parse target version: " + e.getMessage());
         } catch (Exception e) {
             System.err.println("Failed to detect Minecraft version: " + e.getMessage());
         }

@@ -10,9 +10,6 @@ base {
 	archivesName = project.archives_base_name
 }
 
-repositories {
-	mavenCentral()  // Added for SLF4J
-}
 
 loom {
 	splitEnvironmentSourceSets()
@@ -33,10 +30,6 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-
-	// Add SLF4J dependency
-	include 'org.slf4j:slf4j-api:1.7.36'
-	include 'org.slf4j:slf4j-simple:1.7.36'
 }
 
 processResources {
@@ -48,13 +41,13 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-	it.options.release = 8
+	it.options.release = 17
 }
 
 java {
 	withSourcesJar()
-	sourceCompatibility = JavaVersion.VERSION_1_8
-	targetCompatibility = JavaVersion.VERSION_1_8
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
 }
 
 jar {
