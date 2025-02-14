@@ -1,7 +1,6 @@
 package eclipse.euphoriacompanion;
 
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.util.Identifier;
 import org.jetbrains.annotations.NotNull;
@@ -297,9 +296,6 @@ public class EuphoriaCompanion implements ModInitializer {
 		LOGGER.info("Initializing Euphoria Companion Mod");
 
 		// Register to run when the server starts, after all registries are complete
-		ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-			LOGGER.info("Server starting, processing shader packs");
-			processShaderPacks();
-		});
+
 	}
 }
