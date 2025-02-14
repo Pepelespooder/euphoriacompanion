@@ -11,7 +11,8 @@ public class RegistryFactory {
             Class.forName(MODERN_REGISTRY_CLASS);
             isModern = true;
         } catch (ClassNotFoundException e) {
-            isModern = false;
+            isModern = true;
+            // Hardcoding this for now until I figure out what the fuck is going on.
         }
         IS_MODERN = isModern;
     }
