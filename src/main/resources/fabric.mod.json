@@ -1,0 +1,42 @@
+{
+	"schemaVersion": 1,
+	"id": "euphoriacompanion",
+	"version": "${version}",
+	"name": "EuphoriaCompanion",
+	"description": "Aids in shader development by comparing what blocks have been covered by a shader.",
+	"authors": [
+		"Eclipse"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/euphoriacompanion/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"eclipse.euphoriacompanion.EuphoriaCompanion"
+		],
+		"client": [
+			"eclipse.euphoriacompanion.EuphoriaCompanionClient"
+		]
+	},
+	"mixins": [
+		"euphoriacompanion.mixins.json",
+		{
+			"config": "euphoriacompanion.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.7.0",
+		"minecraft": ">=1.14",
+		"java": ">=8",
+		"fabric-key-binding-api-v1": "*",
+		"fabric-lifecycle-events-v1": "*"
+	},
+	"suggests": {
+		"another-mod": "*"
+	}
+}
