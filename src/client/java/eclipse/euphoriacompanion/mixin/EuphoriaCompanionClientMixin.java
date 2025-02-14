@@ -14,7 +14,7 @@ public class EuphoriaCompanionClientMixin {
 	@Inject(method = "tick", at = @At("HEAD"))
 	private void onClientTick(CallbackInfo ci) {
 		if (EuphoriaCompanionClient.analyzeShaderKey.wasPressed()) {
-			EuphoriaCompanionClient.LOGGER.info("Processing block.properties!");
+			EuphoriaCompanionClient.LOGGER.info("Begin processing block.properties!");
 			EuphoriaCompanion.processShaderPacks();
 		}
 	}

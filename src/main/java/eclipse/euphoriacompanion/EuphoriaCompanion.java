@@ -10,10 +10,11 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
-
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 public class EuphoriaCompanion implements ModInitializer {
-	public static final String MOD_ID = "euphoriacompanion";
+	public static final String MOD_ID = "Euphoria Companion";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 	private static RegistryWrapper REGISTRY;
 
@@ -25,55 +26,39 @@ public class EuphoriaCompanion implements ModInitializer {
 		return REGISTRY;
 	}
 
-
-	private static Set<String> readShaderBlockProperties(Path shaderpackPath) {
+	private static Set<String> readShaderBlockPropertiesFromStream(String shaderpackName, InputStream inputStream) {
 		Set<String> shaderBlocks = new HashSet<>();
-		Path blockPropertiesPath = shaderpackPath.resolve("shaders/block.properties");
 
-		// Skip if block.properties doesn't exist
-		if (!Files.exists(blockPropertiesPath)) {
-			LOGGER.warn("No block.properties found in {}", shaderpackPath);
-			return shaderBlocks;
-		}
-
-		try (BufferedReader reader = new BufferedReader(new FileReader(blockPropertiesPath.toFile()))) {
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
 			StringBuilder currentLine = new StringBuilder();
 			String line;
 
 			while ((line = reader.readLine()) != null) {
 				line = line.trim();
 
-				// Skip empty lines and comments
 				if (line.isEmpty() || line.startsWith("#")) {
 					continue;
 				}
 
-				// If line ends with backslash, accumulate lines
 				if (line.endsWith("\\")) {
 					currentLine.append(line, 0, line.length() - 1).append(" ");
 					continue;
 				}
 
-				// Add the final line to complete the entry
 				currentLine.append(line);
-
-				// Process the complete entry
 				String fullLine = currentLine.toString().trim();
+
 				if (fullLine.contains("=")) {
 					String[] parts = fullLine.split("=", 2);
 					if (parts.length > 1) {
-						// Split the right side of the = sign to get block IDs
 						String[] blockIds = parts[1].trim().split("\\s+");
 						for (String blockId : blockIds) {
 							blockId = blockId.trim();
-							// Skip empty strings and "tags_" entries
 							if (!blockId.isEmpty() && !blockId.startsWith("tags_")) {
 								String baseBlockId;
-
-								// Handle block properties
 								String[] segments = blockId.split(":");
+
 								if (segments.length > 1) {
-									// Check if any segment after the first one contains an equals sign
 									boolean hasProperties = false;
 									int baseBlockEndIndex = 0;
 
@@ -86,22 +71,18 @@ public class EuphoriaCompanion implements ModInitializer {
 									}
 
 									if (hasProperties) {
-										// Reconstruct the base block ID up to the property segment
 										StringBuilder baseBlockBuilder = new StringBuilder(segments[0]);
 										for (int i = 1; i < baseBlockEndIndex; i++) {
 											baseBlockBuilder.append(":").append(segments[i]);
 										}
 										baseBlockId = baseBlockBuilder.toString();
 									} else {
-										// No properties found, use the entire block ID
 										baseBlockId = blockId;
 									}
 								} else {
-									// No colons found, treat as vanilla block
 									baseBlockId = blockId;
 								}
 
-								// Add minecraft namespace if missing
 								if (!baseBlockId.contains(":")) {
 									baseBlockId = "minecraft:" + baseBlockId;
 								}
@@ -112,15 +93,12 @@ public class EuphoriaCompanion implements ModInitializer {
 						}
 					}
 				}
-
-				// Reset the StringBuilder for the next entry
 				currentLine.setLength(0);
 			}
 
 			LOGGER.info("Total blocks read from shader properties: {}", shaderBlocks.size());
-
 		} catch (IOException e) {
-			LOGGER.error("Failed to read block.properties file", e);
+			LOGGER.error("Failed to read block.properties from {}", shaderpackName, e);
 		}
 
 		return shaderBlocks;
@@ -199,11 +177,9 @@ public class EuphoriaCompanion implements ModInitializer {
 	}
 
 	static public void processShaderPacks() {
-		// Get game directory and shaderpacks directory
 		Path gameDir = FabricLoader.getInstance().getGameDir();
 		Path shaderpacksDir = gameDir.resolve("shaderpacks");
 
-		// Create shaderpacks directory if it doesn't exist
 		if (!Files.exists(shaderpacksDir)) {
 			try {
 				Files.createDirectories(shaderpacksDir);
@@ -214,11 +190,9 @@ public class EuphoriaCompanion implements ModInitializer {
 			}
 		}
 
-		// Create a map to store blocks by mod ID and set of game blocks
 		Map<String, List<String>> blocksByMod = new TreeMap<>();
 		Set<String> gameBlocks = getStrings(blocksByMod);
 
-		// Create logs directory if needed
 		Path logsDir = gameDir.resolve("logs");
 		if (!Files.exists(logsDir)) {
 			try {
@@ -229,46 +203,68 @@ public class EuphoriaCompanion implements ModInitializer {
 			}
 		}
 
-		// Process each shaderpack
 		try (DirectoryStream<Path> stream = Files.newDirectoryStream(shaderpacksDir)) {
+			int shaderCount = 0;
+
 			for (Path shaderpackPath : stream) {
-				if (Files.isDirectory(shaderpackPath)) {
-					String shaderpackName = shaderpackPath.getFileName().toString();
-					LOGGER.info("Processing shaderpack: {}", shaderpackName);
+				String shaderpackName = shaderpackPath.getFileName().toString();
+				Set<String> shaderBlocks = new HashSet<>();
+				boolean processed = false;
 
-					// Read shader block properties
-					Set<String> shaderBlocks = readShaderBlockProperties(shaderpackPath);
-
-					if (shaderBlocks.isEmpty()) {
-						LOGGER.info("Skipping {} - no valid block.properties found", shaderpackName);
-						continue;
+				try {
+					if (Files.isDirectory(shaderpackPath)) {
+						Path blockPropertiesPath = shaderpackPath.resolve("shaders/block.properties");
+						if (Files.exists(blockPropertiesPath)) {
+							try (InputStream is = Files.newInputStream(blockPropertiesPath)) {
+								shaderBlocks = readShaderBlockPropertiesFromStream(shaderpackName, is);
+								processed = true;
+							}
+						}
+					} else if (shaderpackName.toLowerCase().endsWith(".zip")) {
+						try (ZipFile zip = new ZipFile(shaderpackPath.toFile())) {
+							ZipEntry entry = zip.getEntry("shaders/block.properties");
+							if (entry != null) {
+								try (InputStream is = zip.getInputStream(entry)) {
+									shaderBlocks = readShaderBlockPropertiesFromStream(shaderpackName, is);
+									processed = true;
+								}
+							}
+						}
 					}
 
-					LOGGER.info("Found {} blocks in shader properties for {}", shaderBlocks.size(), shaderpackName);
+					if (processed) {
+						shaderCount++;
+						if (shaderBlocks.isEmpty()) {
+							LOGGER.info("Skipping {} - no valid blocks found", shaderpackName);
+							continue;
+						}
 
-					// Calculate differences
-					Set<String> missingFromShader = new HashSet<>(gameBlocks);
-					missingFromShader.removeAll(shaderBlocks);
+						Set<String> missingFromShader = new HashSet<>(gameBlocks);
+						missingFromShader.removeAll(shaderBlocks);
 
-					// Calculate blocks in shader but not in game
-					Set<String> missingFromGame = new HashSet<>(shaderBlocks);
-					missingFromGame.removeAll(gameBlocks);
+						Set<String> missingFromGame = new HashSet<>(shaderBlocks);
+						missingFromGame.removeAll(gameBlocks);
 
-					// Log the number of blocks not in game
-					LOGGER.info("Found {} blocks in shader that don't exist in game", missingFromGame.size());
+						String safeName = shaderpackName.replaceAll("[^a-zA-Z0-9.-]", "_");
+						Path comparisonPath = logsDir.resolve("block_comparison_" + safeName + ".txt");
 
-					// Create comparison file for this shaderpack
-					String safeName = shaderpackName.replaceAll("[^a-zA-Z0-9.-]", "_");
-					Path comparisonPath = logsDir.resolve("block_comparison_" + safeName + ".txt");
-
-					writeComparisonToFile(comparisonPath, shaderpackName, gameBlocks, shaderBlocks,
-							missingFromShader, missingFromGame, blocksByMod);
+						writeComparisonToFile(comparisonPath, shaderpackName, gameBlocks, shaderBlocks,
+								missingFromShader, missingFromGame, blocksByMod);
+					}
+				} catch (IOException e) {
+					LOGGER.error("Failed to process {}: {}", shaderpackName, e.toString());
 				}
 			}
+
+			if (shaderCount == 0) {
+				LOGGER.error("No valid shaderpacks found in shaderpacks directory!");
+			}
+
 		} catch (IOException e) {
-			LOGGER.error("Failed to process shaderpacks directory", e);
+			LOGGER.error("Failed to process shaderpacks directory: {}", e.toString());
 		}
 	}
+
 
 	private static @NotNull Set<String> getStrings(Map<String, List<String>> blocksByMod) {
 		Set<String> gameBlocks = new HashSet<>();
