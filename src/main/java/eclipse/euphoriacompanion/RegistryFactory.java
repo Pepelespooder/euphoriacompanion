@@ -1,20 +1,31 @@
-// RegistryFactory.java
 package eclipse.euphoriacompanion;
+
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.SemanticVersion;
+import net.fabricmc.loader.api.Version;
 
 public class RegistryFactory {
     private static final boolean IS_MODERN;
-    private static final String MODERN_REGISTRY_CLASS = "net.minecraft.registry.Registries";
 
     static {
-        boolean isModern;
+        boolean isModern = false;
         try {
-            Class.forName(MODERN_REGISTRY_CLASS);
-            isModern = true;
-        } catch (ClassNotFoundException e) {
-            isModern = true;
-            // Hardcoding this for now until I figure out what the fuck is going on.
+            Version mcVersion = FabricLoader.getInstance()
+                    .getModContainer("minecraft")
+                    .orElseThrow(() -> new RuntimeException("Minecraft mod container not found!")) // Fixed line
+                    .getMetadata()
+                    .getVersion();
+
+            if (mcVersion instanceof SemanticVersion) {
+                SemanticVersion semVer = (SemanticVersion) mcVersion;
+                isModern = semVer.compareTo(SemanticVersion.parse("1.19.3")) >= 0;
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to detect Minecraft version: " + e.getMessage());
         }
+
         IS_MODERN = isModern;
+        System.out.println("[EuphoriaCompanion] Modern registry detection: " + IS_MODERN);
     }
 
     public static RegistryWrapper createRegistryWrapper() {

@@ -1,4 +1,4 @@
-// RegistryWrapperModern.java (for 1.19.3+)
+// RegistryWrapperModern.java
 package eclipse.euphoriacompanion;
 
 import net.minecraft.registry.Registries;
@@ -15,6 +15,6 @@ public class RegistryWrapperModern implements RegistryWrapper {
 
     @Override
     public Identifier getBlockId(Object block) {
-        return Registries.BLOCK.getId((Block)block);
+        return Registries.BLOCK.getId((Block) block);
     }
 }
