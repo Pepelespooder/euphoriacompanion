@@ -1,69 +1,60 @@
-plugins {
-	id 'fabric-loom' version '1.9-SNAPSHOT'
-	id 'maven-publish'
+buildscript {
+	repositories {
+		mavenCentral()
+		maven { url = "https://maven.minecraftforge.net/" }
+	}
+
+	dependencies {
+		classpath group: "net.minecraftforge.gradle", name: "ForgeGradle", version: "6.+"
+	}
 }
 
-version = project.mod_version
-group = project.maven_group
+apply plugin: "java"
+apply plugin: "net.minecraftforge.gradle"
 
-base {
-	archivesName = project.archives_base_name
+version = mod_version
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(8)
+compileJava {
+	sourceCompatibility = "8"
+	targetCompatibility = "8"
 }
 
-
-loom {
-	splitEnvironmentSourceSets()
-
-	mods {
-		"euphoriacompanion" {
-			sourceSet sourceSets.main
-			sourceSet sourceSets.client
-		}
+repositories {
+	maven {
+		url = "https://maven.minecraftforge.net/"
 	}
 }
 
 dependencies {
-	// To change the versions see the gradle.properties file
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	minecraft "net.minecraftforge:forge:1.12.2-14.23.5.2860"
 
-	// Fabric API. This is technically optional, but you probably want it anyway.
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+minecraft {
+	mappings channel: "stable", version: "39-1.12"
+
+	runs {
+		"client" {
+			workingDirectory file("./run")
+			mods { "${project.mod_id}" { source sourceSets.main } }
+		}
+
+		"server" {
+			workingDirectory file("./run/server")
+			mods { "${project.mod_id}" { source sourceSets.main } }
+		}
+	}
 }
 
 processResources {
 	inputs.property "version", project.version
 
-	filesMatching("fabric.mod.json") {
+	filesMatching("mcmod.info") {
 		expand "version": project.version
 	}
 }
 
-tasks.withType(JavaCompile).configureEach {
-	it.options.release = 17
-}
-
-java {
-	withSourcesJar()
-	sourceCompatibility = JavaVersion.VERSION_17
-	targetCompatibility = JavaVersion.VERSION_17
-}
-
-jar {
-	from("LICENSE") {
-		rename { "${it}_${project.base.archivesName.get()}"}
-	}
-}
-
-publishing {
-	publications {
-		create("mavenJava", MavenPublication) {
-			artifactId = project.archives_base_name
-			from components.java
-		}
-	}
-
-	repositories {
-	}
-}
+//When Forge 1.12 loads mods from a directory that's been put on the classpath, it expects to find resources in the same directory.
+//Default Gradle behavior puts resources in ./build/resources/main instead of ./build/classes/main/java. Let's change that.
+sourceSets.configureEach { it.output.resourcesDir = it.output.classesDirs.getFiles().iterator().next() }

@@ -1,0 +1,10 @@
+[
+	{
+		"modid": "Euphoria Companion",
+		"name": "Euphoria Companion",
+		"description": "Aids in shader development by comparing blocks covered by shaders.",
+		"version": "1.0.1",
+		"author": "Eclipse",
+		"url": "https://github.com/Mentalgen/euphoriacompanion"
+	}
+]
