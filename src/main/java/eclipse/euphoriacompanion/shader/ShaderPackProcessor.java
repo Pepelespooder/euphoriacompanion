@@ -47,7 +47,7 @@ public class ShaderPackProcessor {
                 Set<String> shaderBlocks;
 
                 if (Files.isDirectory(shaderpackPath)) {
-                    EuphoriaCompanion.LOGGER.info("Processing shaderpack (directory): {}", shaderpackName);
+                    EuphoriaCompanion.LOGGER.info("Processing shaderpack (Directory): {}", shaderpackName);
                     shaderBlocks = readShaderBlockProperties(shaderpackPath);
                 } else if (Files.isRegularFile(shaderpackPath) && shaderpackName.toLowerCase().endsWith(".zip")) {
                     EuphoriaCompanion.LOGGER.info("Processing shaderpack (ZIP): {}", shaderpackName);
@@ -86,7 +86,7 @@ public class ShaderPackProcessor {
         }
 
         int mcVersion = getMCVersion();
-        boolean skip = false;
+        Deque<Boolean> conditionStack = new ArrayDeque<>();
 
         try (BufferedReader reader = Files.newBufferedReader(blockPropertiesPath)) {
             StringBuilder currentLine = new StringBuilder();
@@ -99,17 +99,25 @@ public class ShaderPackProcessor {
                 if (line.startsWith("#if ")) {
                     String condition = line.substring(4).trim();
                     boolean conditionMet = evaluateCondition(condition, mcVersion);
-                    skip = !conditionMet;
+                    boolean currentActive = isActive(conditionStack);
+                    conditionStack.push(currentActive && conditionMet);
                     continue;
                 } else if (line.equals("#else")) {
-                    skip = !skip;
+                    if (!conditionStack.isEmpty()) {
+                        boolean top = conditionStack.pop();
+                        conditionStack.push(!top);
+                    }
                     continue;
                 } else if (line.equals("#endif")) {
-                    skip = false;
+                    if (!conditionStack.isEmpty()) {
+                        conditionStack.pop();
+                    }
                     continue;
                 }
 
-                if (skip) {
+                boolean skipProcessing = !isActive(conditionStack);
+
+                if (skipProcessing) {
                     currentLine.setLength(0); // Discard any accumulated line
                     continue;
                 }
@@ -135,29 +143,36 @@ public class ShaderPackProcessor {
         return shaderBlocks;
     }
 
+    private static boolean isActive(Deque<Boolean> conditionStack) {
+        for (Boolean condition : conditionStack) {
+            if (!condition) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static void processBlockLine(String fullLine, Set<String> shaderBlocks) {
-        if (fullLine.contains("=")) {
-            String[] parts = fullLine.split("=", 2);
-            if (parts.length > 1) {
-                String[] blockIds = parts[1].trim().split("\\s+");
-                for (String blockId : blockIds) {
-                    blockId = blockId.trim();
-                    if (!blockId.isEmpty() && !blockId.startsWith("tags_")) {
-                        String[] allSegments = blockId.split(":");
-                        List<String> cleanSegments = new ArrayList<>();
-                        for (String segment : allSegments) {
-                            if (!segment.contains("=")) {
-                                cleanSegments.add(segment);
-                            }
-                        }
-                        if (cleanSegments.size() >= 2) {
-                            String baseBlockId = cleanSegments.get(0) + ":" + cleanSegments.get(1);
-                            shaderBlocks.add(baseBlockId);
-                        } else if (cleanSegments.size() == 1) {
-                            shaderBlocks.add("minecraft:" + cleanSegments.get(0));
-                        }
-                    }
-                }
+        if (!fullLine.contains("=")) return;
+
+        String[] keyValue = fullLine.split("=", 2);
+        if (keyValue.length < 2) return;
+
+        for (String blockId : keyValue[1].trim().split("\\s+")) {
+            String trimmedId = blockId.trim();
+            if (trimmedId.isEmpty() || trimmedId.startsWith("tags_")) continue;
+
+            String[] segments = trimmedId.split(":");
+            List<String> validSegments = new ArrayList<>();
+            for (String segment : segments) {
+                if (segment.contains("=")) break;
+                validSegments.add(segment);
+            }
+
+            if (validSegments.size() >= 2) {
+                shaderBlocks.add(validSegments.get(0) + ":" + validSegments.get(1));
+            } else if (validSegments.size() == 1) {
+                shaderBlocks.add("minecraft:" + validSegments.get(0));
             }
         }
     }
