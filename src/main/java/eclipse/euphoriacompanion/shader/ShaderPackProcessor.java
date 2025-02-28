@@ -170,10 +170,28 @@ public class ShaderPackProcessor {
             }
 
             if (validSegments.size() >= 2) {
-                shaderBlocks.add(validSegments.get(0) + ":" + validSegments.get(1));
+                int lastIndex = validSegments.size() - 1;
+                boolean hasMetadata = isNumeric(validSegments.get(lastIndex));
+
+                if (validSegments.size() == 2 && hasMetadata) {
+                    shaderBlocks.add("minecraft:" + validSegments.get(0));
+                } else if (hasMetadata) {
+                    shaderBlocks.add(validSegments.get(0) + ":" + validSegments.get(1));
+                } else {
+                    shaderBlocks.add(validSegments.get(0) + ":" + validSegments.get(1));
+                }
             } else if (validSegments.size() == 1) {
                 shaderBlocks.add("minecraft:" + validSegments.get(0));
             }
+        }
+    }
+
+    private static boolean isNumeric(String str) {
+        try {
+            Integer.parseInt(str);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
         }
     }
 
