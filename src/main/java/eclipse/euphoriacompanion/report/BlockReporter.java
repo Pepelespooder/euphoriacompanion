@@ -30,6 +30,10 @@ public class BlockReporter {
             writer.write(String.format("Unused blocks from shader: %d\n", missingFromGame.size()));
             writer.write(String.format("Blocks missing from shader: %d\n\n", missingFromShader.size()));
 
+            if (missingFromShader.isEmpty() && !gameBlocks.isEmpty()) {
+                writeCongratulationMessage(writer);
+            }
+
             writeMissingBlocksByMod(writer, missingFromShader);
             writeFullBlockList(writer, blocksByMod);
             writeUnusedShaderBlocks(writer, missingFromGame);
@@ -40,7 +44,16 @@ public class BlockReporter {
         }
     }
 
+    private static void writeCongratulationMessage(BufferedWriter writer) throws IOException {
+        writer.write("\n");
+        writer.write("Nice! All blocks are added!\n\n");
+    }
+
     private static void writeMissingBlocksByMod(BufferedWriter writer, Set<String> missingFromShader) throws IOException {
+        if (missingFromShader.isEmpty()) {
+            return;
+        }
+
         Map<String, List<String>> missingByMod = new TreeMap<>();
         for (String block : missingFromShader) {
             String[] parts = block.split(":", 2);
@@ -72,6 +85,10 @@ public class BlockReporter {
     }
 
     private static void writeUnusedShaderBlocks(BufferedWriter writer, Set<String> missingFromGame) throws IOException {
+        if (missingFromGame.isEmpty()) {
+            return;
+        }
+
         Map<String, List<String>> unusedByNamespace = new TreeMap<>();
         for (String block : missingFromGame) {
             String[] parts = block.split(":", 2);
