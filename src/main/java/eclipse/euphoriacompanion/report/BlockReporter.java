@@ -30,9 +30,9 @@ public class BlockReporter {
             writer.write(String.format("Unused blocks from shader: %d\n", missingFromGame.size()));
             writer.write(String.format("Blocks missing from shader: %d\n\n", missingFromShader.size()));
 
-            writeUnusedShaderBlocks(writer, missingFromGame);
             writeMissingBlocksByMod(writer, missingFromShader);
             writeFullBlockList(writer, blocksByMod);
+            writeUnusedShaderBlocks(writer, missingFromGame);
 
             EuphoriaCompanion.LOGGER.info("Report written to {}", outputPath);
         } catch (IOException e) {
