@@ -30,6 +30,7 @@ public class BlockReporter {
             writer.write(String.format("Unused blocks from shader: %d\n", missingFromGame.size()));
             writer.write(String.format("Blocks missing from shader: %d\n\n", missingFromShader.size()));
 
+            writeUnusedShaderBlocks(writer, missingFromGame);
             writeMissingBlocksByMod(writer, missingFromShader);
             writeFullBlockList(writer, blocksByMod);
 
@@ -68,5 +69,29 @@ public class BlockReporter {
             }
             writer.write("\n");
         }
+    }
+
+    private static void writeUnusedShaderBlocks(BufferedWriter writer, Set<String> missingFromGame) throws IOException {
+        Map<String, List<String>> unusedByNamespace = new TreeMap<>();
+        for (String block : missingFromGame) {
+            String[] parts = block.split(":", 2);
+            if (parts.length == 2) {
+                unusedByNamespace.computeIfAbsent(parts[0], k -> new ArrayList<>()).add(parts[1]);
+            } else {
+                // Handle case where there's no namespace
+                unusedByNamespace.computeIfAbsent("unknown", k -> new ArrayList<>()).add(block);
+            }
+        }
+
+        writer.write("=== Unused Shader Blocks (Not Found In Game) ===\n");
+        for (Map.Entry<String, List<String>> entry : unusedByNamespace.entrySet()) {
+            writer.write("--- " + entry.getKey() + " (" + entry.getValue().size() + ") ---\n");
+            Collections.sort(entry.getValue());
+            for (String block : entry.getValue()) {
+                writer.write(entry.getKey() + ":" + block + "\n");
+            }
+            writer.write("\n");
+        }
+        writer.write("\n");
     }
 }
