@@ -1,60 +1,87 @@
-buildscript {
-	repositories {
-		mavenCentral()
-		maven { url = "https://maven.minecraftforge.net/" }
-	}
-
-	dependencies {
-		classpath group: "net.minecraftforge.gradle", name: "ForgeGradle", version: "6.+"
-	}
+plugins {
+	id 'fabric-loom' version '1.4-SNAPSHOT'
+	id 'maven-publish'
 }
 
-apply plugin: "java"
-apply plugin: "net.minecraftforge.gradle"
-
-version = mod_version
-
-java.toolchain.languageVersion = JavaLanguageVersion.of(8)
-compileJava {
-	sourceCompatibility = "8"
-	targetCompatibility = "8"
-}
+version = project.mod_version
+group = project.maven_group
 
 repositories {
+	// Add repositories to retrieve artifacts from in here.
+	// You should only use this when depending on other mods because
+	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
 	maven {
-		url = "https://maven.minecraftforge.net/"
+		url "https://maven.fabricmc.net/"
 	}
+	mavenCentral()
 }
 
 dependencies {
-	minecraft "net.minecraftforge:forge:1.12.2-14.23.5.2860"
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
-}
-
-minecraft {
-	mappings channel: "stable", version: "39-1.12"
-
-	runs {
-		"client" {
-			workingDirectory file("./run")
-			mods { "${project.mod_id}" { source sourceSets.main } }
-		}
-
-		"server" {
-			workingDirectory file("./run/server")
-			mods { "${project.mod_id}" { source sourceSets.main } }
-		}
-	}
+	// Fabric API - use more specific modules to reduce size
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+	
+	// Add SLF4J dependencies
+	implementation 'org.slf4j:slf4j-api:1.7.36'
+	implementation 'org.slf4j:slf4j-simple:1.7.36'
+	include 'org.slf4j:slf4j-api:1.7.36'
+	include 'org.slf4j:slf4j-simple:1.7.36'
 }
 
 processResources {
 	inputs.property "version", project.version
+	filteringCharset "UTF-8"
 
-	filesMatching("mcmod.info") {
+	filesMatching("fabric.mod.json") {
 		expand "version": project.version
 	}
 }
 
-//When Forge 1.12 loads mods from a directory that's been put on the classpath, it expects to find resources in the same directory.
-//Default Gradle behavior puts resources in ./build/resources/main instead of ./build/classes/main/java. Let's change that.
-sourceSets.configureEach { it.output.resourcesDir = it.output.classesDirs.getFiles().iterator().next() }
+tasks.withType(JavaCompile).configureEach {
+	// For Minecraft 1.16-1.19.2, use Java 8
+	sourceCompatibility = JavaVersion.VERSION_1_8
+	targetCompatibility = JavaVersion.VERSION_1_8
+	
+	// Make sure to use the proper option format for Java 8
+	if (JavaVersion.current().isJava9Compatible()) {
+		it.options.release = 8
+	}
+	
+	// Add these options to help with compatibility issues
+	options.encoding = "UTF-8"
+	options.compilerArgs += ["-Xlint:deprecation", "-Xlint:unchecked"]
+}
+
+java {
+	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+	// if it is present.
+	// If you remove this line, sources will not be generated.
+	withSourcesJar()
+}
+
+jar {
+	from("LICENSE") {
+		rename { "${it}_${project.archivesBaseName}"}
+	}
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			from components.java
+		}
+	}
+
+	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+	repositories {
+		// Add repositories to publish to here.
+		// Notice: This block does NOT have the same function as the block in the top level.
+		// The repositories here will be used for publishing your artifact, not for
+		// retrieving dependencies.
+	}
+}

@@ -1,12 +1,21 @@
 package eclipse.euphoriacompanion.util;
 
 import eclipse.euphoriacompanion.EuphoriaCompanion;
-import net.minecraftforge.fml.common.Loader;
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.ModContainer;
+
+import java.util.Optional;
 
 public class MCVersionChecker {
 
     public static int getMCVersion() {
-        String version = Loader.instance().getMinecraftModContainer().getVersion();
+        Optional<ModContainer> minecraftContainer = FabricLoader.getInstance().getModContainer("minecraft");
+        if (!minecraftContainer.isPresent()) {
+            throw new RuntimeException("Could not get Minecraft version");
+        }
+
+        String version = minecraftContainer.get().getMetadata().getVersion().getFriendlyString();
+
         try {
             String[] parts = version.split("\\.");
             int major = Integer.parseInt(parts[0]);
@@ -29,21 +38,20 @@ public class MCVersionChecker {
             String valueStr = parts[1];
             try {
                 int value = Integer.parseInt(valueStr);
-                switch (operator) {
-                    case ">=":
-                        return mcVersion >= value;
-                    case ">":
-                        return mcVersion > value;
-                    case "<=":
-                        return mcVersion <= value;
-                    case "<":
-                        return mcVersion < value;
-                    case "==":
-                        return mcVersion == value;
-                    case "!=":
-                        return mcVersion != value;
-                    default:
-                        return false;
+                if (">=".equals(operator)) {
+                    return mcVersion >= value;
+                } else if (">".equals(operator)) {
+                    return mcVersion > value;
+                } else if ("<=".equals(operator)) {
+                    return mcVersion <= value;
+                } else if ("<".equals(operator)) {
+                    return mcVersion < value;
+                } else if ("==".equals(operator)) {
+                    return mcVersion == value;
+                } else if ("!=".equals(operator)) {
+                    return mcVersion != value;
+                } else {
+                    return false;
                 }
             } catch (NumberFormatException e) {
                 EuphoriaCompanion.LOGGER.error("Invalid version in condition: {}", valueStr, e);

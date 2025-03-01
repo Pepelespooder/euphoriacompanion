@@ -1,28 +1,30 @@
 package eclipse.euphoriacompanion;
 
-import eclipse.euphoriacompanion.client.ClientKeyHandler;
 import eclipse.euphoriacompanion.shader.ShaderPackProcessor;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.event.FMLInitializationEvent;
-import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
+import org.lwjgl.glfw.GLFW;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Mod(modid = EuphoriaCompanion.MODID, name = "Euphoria Companion", version = "1.0.2")
-public class EuphoriaCompanion {
+import java.nio.file.Path;
+
+public class EuphoriaCompanion implements ModInitializer {
     public static final String MODID = "euphoriacompanion";
-    public static final Logger LOGGER = LogManager.getLogger(MODID);
+    public static final Logger LOGGER = LoggerFactory.getLogger(MODID);
+    public static KeyBinding ANALYZE_KEY = new KeyBinding("key.euphoriacompanion.analyze", InputUtil.Type.KEYSYM.createFromCode(GLFW.GLFW_KEY_F6).getCode(), "category.euphoriacompanion.keys");
 
-    @Mod.EventHandler
-    public static void onServerStarting(FMLServerStartingEvent event) {
-        LOGGER.info("Server starting, processing shader packs");
-        ShaderPackProcessor.processShaderPacks(event.getServer().getDataDirectory().toPath());
+    public static void processShaderPacks() {
+        Path gameDir = FabricLoader.getInstance().getGameDir();
+        ShaderPackProcessor.processShaderPacks(gameDir);
     }
 
-    @Mod.EventHandler
-    public void init(FMLInitializationEvent event) {
-        if (event.getSide().isClient()) {
-            ClientKeyHandler.register();
-        }
+    @Override
+    public void onInitialize() {
+        LOGGER.info("Initializing Euphoria Companion");
+        ANALYZE_KEY = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.euphoriacompanion.analyze", InputUtil.Type.KEYSYM.createFromCode(GLFW.GLFW_KEY_F6).getCode(), "category.euphoriacompanion.keys"));
     }
 }

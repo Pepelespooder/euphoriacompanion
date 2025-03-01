@@ -1,17 +1,15 @@
 package eclipse.euphoriacompanion.shader;
 
 import eclipse.euphoriacompanion.EuphoriaCompanion;
-import net.minecraft.client.Minecraft;
+import eclipse.euphoriacompanion.report.BlockReporter;
+import eclipse.euphoriacompanion.util.BlockRegistryHelper;
+import eclipse.euphoriacompanion.util.MCVersionChecker;
+import net.minecraft.client.MinecraftClient;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
-
-import static eclipse.euphoriacompanion.report.BlockReporter.processShaderBlocks;
-import static eclipse.euphoriacompanion.util.BlockRegistryHelper.getGameBlocks;
-import static eclipse.euphoriacompanion.util.MCVersionChecker.evaluateCondition;
-import static eclipse.euphoriacompanion.util.MCVersionChecker.getMCVersion;
 
 public class ShaderPackProcessor {
     public static void processShaderPacks(Path gameDir) {
@@ -29,9 +27,9 @@ public class ShaderPackProcessor {
         }
 
         Map<String, List<String>> blocksByMod = new TreeMap<>();
-        Set<String> gameBlocks = getGameBlocks(blocksByMod);
+        Set<String> gameBlocks = BlockRegistryHelper.getGameBlocks(blocksByMod);
 
-        Path logsDir = Minecraft.getMinecraft().gameDir.toPath().resolve("logs");
+        Path logsDir = MinecraftClient.getInstance().runDirectory.toPath().resolve("logs");
         if (!Files.exists(logsDir)) {
             try {
                 Files.createDirectories(logsDir);
@@ -51,7 +49,7 @@ public class ShaderPackProcessor {
                     shaderBlocks = readShaderBlockProperties(shaderpackPath);
                 } else if (Files.isRegularFile(shaderpackPath) && shaderpackName.toLowerCase().endsWith(".zip")) {
                     EuphoriaCompanion.LOGGER.info("Processing shaderpack (ZIP): {}", shaderpackName);
-                    try (FileSystem zipFs = FileSystems.newFileSystem(shaderpackPath, null)) {
+                    try (FileSystem zipFs = FileSystems.newFileSystem(shaderpackPath, (ClassLoader) null)) {
                         Path root = zipFs.getPath("/");
                         shaderBlocks = readShaderBlockProperties(root);
                     } catch (IOException e) {
@@ -66,7 +64,7 @@ public class ShaderPackProcessor {
                 if (!shaderBlocks.isEmpty()) {
                     anyValidShaderpack = true;
                 }
-                processShaderBlocks(shaderpackName, shaderBlocks, gameBlocks, logsDir, blocksByMod);
+                BlockReporter.processShaderBlocks(shaderpackName, shaderBlocks, gameBlocks, logsDir, blocksByMod);
             }
 
             if (!anyValidShaderpack) {
@@ -85,7 +83,7 @@ public class ShaderPackProcessor {
             return shaderBlocks;
         }
 
-        int mcVersion = getMCVersion();
+        int mcVersion = MCVersionChecker.getMCVersion();
         Deque<Boolean> conditionStack = new ArrayDeque<>();
 
         try (BufferedReader reader = Files.newBufferedReader(blockPropertiesPath)) {
@@ -98,7 +96,7 @@ public class ShaderPackProcessor {
                 // Handle preprocessor directives
                 if (line.startsWith("#if ")) {
                     String condition = line.substring(4).trim();
-                    boolean conditionMet = evaluateCondition(condition, mcVersion);
+                    boolean conditionMet = MCVersionChecker.evaluateCondition(condition, mcVersion);
                     boolean currentActive = isActive(conditionStack);
                     conditionStack.push(currentActive && conditionMet);
                     continue;
@@ -194,5 +192,4 @@ public class ShaderPackProcessor {
             return false;
         }
     }
-
 }
