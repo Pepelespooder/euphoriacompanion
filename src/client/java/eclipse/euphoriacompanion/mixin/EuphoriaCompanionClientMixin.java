@@ -11,11 +11,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(MinecraftClient.class)
 public class EuphoriaCompanionClientMixin {
-	@Inject(method = "tick", at = @At("HEAD"))
-	private void onClientTick(CallbackInfo ci) {
-		if (EuphoriaCompanionClient.analyzeShaderKey.wasPressed()) {
-			EuphoriaCompanionClient.LOGGER.info("Begin processing block.properties!");
-			EuphoriaCompanion.processShaderPacks();
-		}
-	}
+    @Inject(method = "tick", at = @At("HEAD"))
+    private void onClientTick(CallbackInfo ci) {
+        if (EuphoriaCompanionClient.analyzeShaderKey.wasPressed()) {
+            EuphoriaCompanionClient.LOGGER.info("Begin processing block.properties!");
+            EuphoriaCompanion.processShaderPacks();
+        }
+    }
 }

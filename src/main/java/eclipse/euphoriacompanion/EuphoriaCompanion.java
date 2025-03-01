@@ -15,7 +15,7 @@ import java.nio.file.Path;
 public class EuphoriaCompanion implements ModInitializer {
     public static final String MODID = "euphoriacompanion";
     public static final Logger LOGGER = LoggerFactory.getLogger(MODID);
-    public static KeyBinding ANALYZE_KEY = new KeyBinding("key.euphoriacompanion.analyze", InputUtil.Type.KEYSYM.createFromCode(GLFW.GLFW_KEY_F6).getCode(), "category.euphoriacompanion.keys");
+    public static KeyBinding ANALYZE_KEY;
 
     public static void processShaderPacks() {
         Path gameDir = FabricLoader.getInstance().getGameDir();
@@ -25,6 +25,13 @@ public class EuphoriaCompanion implements ModInitializer {
     @Override
     public void onInitialize() {
         LOGGER.info("Initializing Euphoria Companion");
-        ANALYZE_KEY = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.euphoriacompanion.analyze", InputUtil.Type.KEYSYM.createFromCode(GLFW.GLFW_KEY_F6).getCode(), "category.euphoriacompanion.keys"));
+
+        try {
+            // Register the keybinding using Fabric API
+            ANALYZE_KEY = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.euphoriacompanion.analyze", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_F6, "category.euphoriacompanion.keys"));
+            LOGGER.info("Successfully registered keybinding");
+        } catch (Exception e) {
+            LOGGER.error("Failed to register keybinding", e);
+        }
     }
 }

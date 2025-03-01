@@ -10,22 +10,23 @@ public class MCVersionChecker {
 
     public static int getMCVersion() {
         Optional<ModContainer> minecraftContainer = FabricLoader.getInstance().getModContainer("minecraft");
-        if (!minecraftContainer.isPresent()) {
+        if (minecraftContainer.isPresent()) {
+            String version = minecraftContainer.get().getMetadata().getVersion().getFriendlyString();
+
+            try {
+                String[] parts = version.split("\\.");
+                int major = Integer.parseInt(parts[0]);
+                int minor = Integer.parseInt(parts[1]);
+                int patch = parts.length > 2 ? Integer.parseInt(parts[2]) : 0;
+                return major * 10000 + minor * 100 + patch;
+            } catch (Exception e) {
+                EuphoriaCompanion.LOGGER.error("Failed to parse Minecraft version: {}", version, e);
+                return 0;
+            }
+        } else {
             throw new RuntimeException("Could not get Minecraft version");
         }
 
-        String version = minecraftContainer.get().getMetadata().getVersion().getFriendlyString();
-
-        try {
-            String[] parts = version.split("\\.");
-            int major = Integer.parseInt(parts[0]);
-            int minor = Integer.parseInt(parts[1]);
-            int patch = parts.length > 2 ? Integer.parseInt(parts[2]) : 0;
-            return major * 10000 + minor * 100 + patch;
-        } catch (Exception e) {
-            EuphoriaCompanion.LOGGER.error("Failed to parse Minecraft version: {}", version, e);
-            return 0;
-        }
     }
 
     public static boolean evaluateCondition(String condition, int mcVersion) {

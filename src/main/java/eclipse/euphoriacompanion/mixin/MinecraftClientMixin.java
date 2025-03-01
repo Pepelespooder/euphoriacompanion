@@ -10,7 +10,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(MinecraftClient.class)
 public class MinecraftClientMixin {
-
     @Shadow
     private boolean paused;
 
@@ -19,8 +18,8 @@ public class MinecraftClientMixin {
         MinecraftClient client = (MinecraftClient) (Object) this;
 
         // Only process when the game is active
-        if (client.player != null && client.currentScreen == null && !paused) {
-            // Check if our rebindable key was pressed
+        if (client.player != null && client.currentScreen == null && !paused && EuphoriaCompanion.ANALYZE_KEY != null) {
+            // Check if our key was pressed
             if (EuphoriaCompanion.ANALYZE_KEY.wasPressed()) {
                 EuphoriaCompanion.LOGGER.info("Analyze key pressed, processing shader packs");
                 EuphoriaCompanion.processShaderPacks();

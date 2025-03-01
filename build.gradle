@@ -24,12 +24,7 @@ dependencies {
 
 	// Fabric API - use more specific modules to reduce size
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	
-	// Add SLF4J dependencies
-	implementation 'org.slf4j:slf4j-api:1.7.36'
-	implementation 'org.slf4j:slf4j-simple:1.7.36'
-	include 'org.slf4j:slf4j-api:1.7.36'
-	include 'org.slf4j:slf4j-simple:1.7.36'
+
 }
 
 processResources {
@@ -42,13 +37,13 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-	// For Minecraft 1.16-1.19.2, use Java 8
-	sourceCompatibility = JavaVersion.VERSION_1_8
-	targetCompatibility = JavaVersion.VERSION_1_8
+	// For Minecraft 1.19.3+ we need to use Java 17
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
 	
-	// Make sure to use the proper option format for Java 8
+	// Make sure to use the proper option format for Java 17
 	if (JavaVersion.current().isJava9Compatible()) {
-		it.options.release = 8
+		it.options.release = 17
 	}
 	
 	// Add these options to help with compatibility issues
