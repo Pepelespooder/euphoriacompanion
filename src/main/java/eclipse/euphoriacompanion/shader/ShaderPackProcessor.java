@@ -26,8 +26,7 @@ public class ShaderPackProcessor {
 
             // Create or overwrite the debug log file with timestamp header
             debugWriter = new PrintWriter(new BufferedWriter(new FileWriter(DEBUG_LOG_FILE.toFile())));
-            debugWriter.println("--- Shader Block Debug Log - " +
-                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) + " ---");
+            debugWriter.println("--- Shader Block Debug Log - " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) + " ---");
             debugWriter.flush();
         } catch (IOException e) {
             EuphoriaCompanion.LOGGER.error("Failed to create debug log file", e);
@@ -76,9 +75,14 @@ public class ShaderPackProcessor {
                 }
             }
 
+            // Load all blocks by mod
             Map<String, List<String>> blocksByMod = new TreeMap<>();
             Set<String> gameBlocks = BlockRegistryHelper.getGameBlocks(blocksByMod);
             writeDebug("Loaded " + gameBlocks.size() + " game blocks from " + blocksByMod.size() + " mods");
+
+            // Export block categories for shader developers
+            EuphoriaCompanion.exportBlockCategories();
+            writeDebug("Exported block render categories to JSON");
 
             Path logsDir = MinecraftClient.getInstance().runDirectory.toPath().resolve("logs");
             if (!Files.exists(logsDir)) {
@@ -258,15 +262,12 @@ public class ShaderPackProcessor {
             if (blockToAdd != null) {
                 boolean isNewBlock = shaderBlocks.add(blockToAdd);
                 if (isNewBlock) {
-                    writeDebug("    ADDED block '" + blockToAdd + "' from property '" + blockProperty +
-                            "' and value '" + trimmedId + "'");
+                    writeDebug("    ADDED block '" + blockToAdd + "' from property '" + blockProperty + "' and value '" + trimmedId + "'");
                 } else {
-                    writeDebug("    Block '" + blockToAdd + "' already exists (from property '" +
-                            blockProperty + "' and value '" + trimmedId + "')");
+                    writeDebug("    Block '" + blockToAdd + "' already exists (from property '" + blockProperty + "' and value '" + trimmedId + "')");
                 }
             } else {
-                writeDebug("    Could not process block value: '" + trimmedId + "' from property '" +
-                        blockProperty + "'");
+                writeDebug("    Could not process block value: '" + trimmedId + "' from property '" + blockProperty + "'");
             }
         }
     }
@@ -288,8 +289,7 @@ public class ShaderPackProcessor {
         if (validSegments.size() >= 2) {
             int lastIndex = validSegments.size() - 1;
             boolean hasMetadata = isNumeric(validSegments.get(lastIndex));
-            writeDebug("      Segments >= 2, last segment '" + validSegments.get(lastIndex) +
-                    "' isNumeric: " + hasMetadata);
+            writeDebug("      Segments >= 2, last segment '" + validSegments.get(lastIndex) + "' isNumeric: " + hasMetadata);
 
             if (validSegments.size() == 2 && hasMetadata) {
                 blockToAdd = "minecraft:" + validSegments.get(0);
