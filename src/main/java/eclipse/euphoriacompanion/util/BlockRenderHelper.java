@@ -229,7 +229,7 @@ public class BlockRenderHelper {
      * Should be called after the block registry is frozen.
      */
     public static void categorizeAllBlocks() {
-        EuphoriaCompanion.LOGGER.info("Categorizing blocks by properties...");
+        // No starting message - removed to reduce log spam
 
         // Clear all caches
         clearCaches();
@@ -275,14 +275,7 @@ public class BlockRenderHelper {
             }
         });
 
-        // Log summary
-        EuphoriaCompanion.LOGGER.info("=== Block Categorization Summary ===");
-        EuphoriaCompanion.LOGGER.info("Total blocks: {}", Registries.BLOCK.size());
-        EuphoriaCompanion.LOGGER.info("Translucent blocks: {}", counts.get(TRANSLUCENT).get());
-        EuphoriaCompanion.LOGGER.info("Light-emitting blocks: {}", counts.get(LIGHT_EMITTING).get());
-        EuphoriaCompanion.LOGGER.info("Full cube (1x1x1) blocks: {}", counts.get(FULL_CUBE).get());
-        EuphoriaCompanion.LOGGER.info("Blocks that are both translucent and light-emitting: {}", translucentAndLightCount.get());
-        EuphoriaCompanion.LOGGER.info("Blocks that are both full cubes and light-emitting: {}", fullCubeAndLightCount.get());
+        // No summary logging - removed to reduce log spam
     }
 
     /**

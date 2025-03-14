@@ -1,8 +1,12 @@
 package eclipse.euphoriacompanion.report;
 
 import eclipse.euphoriacompanion.EuphoriaCompanion;
+import eclipse.euphoriacompanion.util.BlockPropertyExtractor;
+import eclipse.euphoriacompanion.util.BlockPropertyRegistry;
 import eclipse.euphoriacompanion.util.BlockRenderCategory;
 import eclipse.euphoriacompanion.util.BlockRenderHelper;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.state.property.Property;
 import net.minecraft.block.Block;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
@@ -14,26 +18,82 @@ import java.nio.file.Path;
 import java.util.*;
 
 public class BlockReporter {
-    public static void processShaderBlocks(String shaderpackName, Set<String> shaderBlocks, Set<String> gameBlocks, Path logsDir, Map<String, List<String>> blocksByMod) {
+    public static void processShaderBlocks(String shaderpackName, Set<String> shaderBlocks, Set<String> gameBlocks, 
+            Path logsDir, Map<String, List<String>> blocksByMod, 
+            Map<String, Set<BlockPropertyExtractor.BlockStateProperty>> blockPropertiesMap) {
+        // Process blocks with properties
+        Set<String> processedShaderBlocks = new HashSet<>();
+        // Use the passed-in blockPropertiesMap to track extracted properties
+        
+        // Process each shader block and handle those with properties
+        for (String shaderBlock : shaderBlocks) {
+            if (shaderBlock.contains(":") && shaderBlock.contains("=")) {
+                // This is likely a block with state properties
+                try {
+                    // Use our BlockPropertyExtractor to parse the block identifier
+                    BlockPropertyExtractor.ParsedBlockIdentifier parsed = 
+                        BlockPropertyExtractor.parseBlockIdentifier(shaderBlock);
+                    
+                    String blockId = parsed.blockName;
+                    Set<BlockPropertyExtractor.BlockStateProperty> properties = parsed.properties;
+                    
+                    // Add minecraft namespace only if the block doesn't already have one
+                    if (!blockId.contains(":")) {
+                        blockId = "minecraft:" + blockId;
+                        EuphoriaCompanion.LOGGER.debug("Added minecraft namespace to vanilla block: {}", blockId);
+                    } else {
+                        EuphoriaCompanion.LOGGER.debug("Block already has namespace, keeping as is: {}", blockId);
+                    }
+                    
+                    // Add to processed blocks
+                    processedShaderBlocks.add(blockId);
+                    
+                    // Store properties if any
+                    if (!properties.isEmpty()) {
+                        blockPropertiesMap.put(blockId, properties);
+                    }
+                } catch (Exception e) {
+                    // If parsing fails, just add the block as is
+                    processedShaderBlocks.add(shaderBlock);
+                }
+            } else {
+                // Regular block without properties
+                processedShaderBlocks.add(shaderBlock);
+            }
+        }
+        
+        // Find blocks missing from the shader
         Set<String> missingFromShader = new HashSet<>(gameBlocks);
-        missingFromShader.removeAll(shaderBlocks);
-
-        Set<String> missingFromGame = new HashSet<>(shaderBlocks);
+        missingFromShader.removeAll(processedShaderBlocks);
+        
+        // Find blocks in the shader but not in the game
+        Set<String> missingFromGame = new HashSet<>(processedShaderBlocks);
         missingFromGame.removeAll(gameBlocks);
-
+        
+        // Create a safe filename
         String safeName = shaderpackName.replaceAll("[^a-zA-Z0-9.-]", "_");
         Path comparisonPath = logsDir.resolve("block_comparison_" + safeName + ".txt");
-
+        
         // Create categorized blocks
         Map<BlockRenderCategory, Map<String, List<String>>> categorizedBlocksByMod = getCategorizedBlocksByMod(blocksByMod);
-
+        
         // Create categorized missing blocks
         Map<BlockRenderCategory, Set<String>> categorizedMissingBlocks = categorizeMissingBlocks(missingFromShader);
-
-        writeComparisonFile(comparisonPath, shaderpackName, gameBlocks, shaderBlocks, missingFromShader, missingFromGame, categorizedBlocksByMod, categorizedMissingBlocks);
+        
+        // Write the comparison file
+        writeComparisonFile(comparisonPath, shaderpackName, gameBlocks, processedShaderBlocks, 
+                           missingFromShader, missingFromGame, categorizedBlocksByMod, categorizedMissingBlocks,
+                           blockPropertiesMap);
     }
 
-    private static void writeComparisonFile(Path outputPath, String shaderpackName, Set<String> gameBlocks, Set<String> shaderBlocks, Set<String> missingFromShader, Set<String> missingFromGame, Map<BlockRenderCategory, Map<String, List<String>>> categorizedBlocksByMod, Map<BlockRenderCategory, Set<String>> categorizedMissingBlocks) {
+    private static void writeComparisonFile(Path outputPath, String shaderpackName, Set<String> gameBlocks, Set<String> shaderBlocks, 
+            Set<String> missingFromShader, Set<String> missingFromGame, 
+            Map<BlockRenderCategory, Map<String, List<String>>> categorizedBlocksByMod, 
+            Map<BlockRenderCategory, Set<String>> categorizedMissingBlocks,
+            Map<String, Set<BlockPropertyExtractor.BlockStateProperty>> blockPropertiesMap) {
+        
+        // The logs directory is the parent of the output path
+        Path logsDir = outputPath.getParent();
         try (BufferedWriter writer = Files.newBufferedWriter(outputPath)) {
             writer.write("=========================================\n");
             writer.write("== BLOCK COMPARISON SUMMARY FOR " + shaderpackName.toUpperCase() + " ==\n");
@@ -42,6 +102,19 @@ public class BlockReporter {
             writer.write(String.format("Total blocks in shader: %d\n", shaderBlocks.size()));
             writer.write(String.format("Unused blocks from shader: %d\n", missingFromGame.size()));
             writer.write(String.format("Blocks missing from shader: %d\n\n", missingFromShader.size()));
+            
+            // Find and write missing property states
+            EuphoriaCompanion.LOGGER.info("Checking for missing property states in {} shader blocks", shaderBlocks.size());
+            
+            // Check if we have a missing_property_states.txt file
+            Path missingPropertiesPath = logsDir.resolve("missing_property_states.txt");
+            if (Files.exists(missingPropertiesPath)) {
+                EuphoriaCompanion.LOGGER.info("Using consolidated missing property states from {}", missingPropertiesPath);
+                writeMissingPropertyStatesFromFile(writer, missingPropertiesPath, logsDir);
+            } else {
+                // For safety during transition, still use the old method if file not found
+                writeMissingPropertyStates(writer, shaderBlocks, blockPropertiesMap);
+            }
 
             // Write category counts
             writeCategoryCounts(writer, categorizedBlocksByMod);
@@ -80,6 +153,131 @@ public class BlockReporter {
     private static void writeCongratulationMessage(BufferedWriter writer) throws IOException {
         writer.write("\n");
         writer.write("Nice! All blocks are added!\n\n");
+    }
+    
+    /**
+     * Checks for and writes any missing property states of blocks with properties
+     * For example, if redstone_torch:lit=false is in the shader blocks but redstone_torch:lit=true is not,
+     * this will detect and list the missing state.
+     * 
+     * Uses the improved BlockPropertyRegistry to track and compare properties.
+     * 
+     * @param writer BufferedWriter to write to
+     * @param shaderBlocks Set of blocks in the shader
+     * @throws IOException If an error occurs while writing
+     */
+    private static void writeMissingPropertyStates(BufferedWriter writer, Set<String> shaderBlocks, 
+            Map<String, Set<BlockPropertyExtractor.BlockStateProperty>> blockPropertiesMap) throws IOException {
+        // Use the improved BlockPropertyRegistry
+        BlockPropertyRegistry registry = BlockPropertyRegistry.getInstance(
+            MinecraftClient.getInstance().runDirectory.toPath());
+            
+        // Clear any existing data to ensure a fresh start
+        registry.clearAll();
+        
+        // Process shader blocks to identify properties
+        Set<String> relevantBlocks = new HashSet<>();
+        
+        // First, add blocks from blockPropertiesMap
+        for (Map.Entry<String, Set<BlockPropertyExtractor.BlockStateProperty>> entry : blockPropertiesMap.entrySet()) {
+            String baseBlockId = entry.getKey();
+            Set<BlockPropertyExtractor.BlockStateProperty> properties = entry.getValue();
+            
+            if (properties.isEmpty()) {
+                continue;
+            }
+            
+            // Get normalized block ID
+            if (!baseBlockId.contains(":")) {
+                baseBlockId = "minecraft:" + baseBlockId;
+            }
+            
+            // Register each property
+            for (BlockPropertyExtractor.BlockStateProperty prop : properties) {
+                registry.registerUsedProperty(baseBlockId, prop.getName(), prop.getValue());
+                
+                // Add reconstructed block ID with properties
+                String blockWithProps = baseBlockId + ":" + prop.getName() + "=" + prop.getValue();
+                relevantBlocks.add(blockWithProps);
+            }
+        }
+        
+        // Then add blocks with properties from shader blocks
+        for (String blockId : shaderBlocks) {
+            if (blockId.contains("=")) {
+                registry.registerBlockWithProperties(blockId);
+                relevantBlocks.add(blockId);
+            }
+        }
+        
+        // No blocks with properties found
+        if (relevantBlocks.isEmpty()) {
+            return;
+        }
+        
+        // Get missing property states
+        List<String> missingPropertyStates = registry.findAllMissingPropertyStates();
+        
+        // Log missing property states count with debug level
+        EuphoriaCompanion.LOGGER.debug("Found {} missing property states", missingPropertyStates.size());
+        
+        // Write the missing property states if any
+        if (!missingPropertyStates.isEmpty()) {
+            writer.write("============ MISSING PROPERTY STATES ============\n");
+            writer.write("The following property states are missing from the shader:\n");
+            
+            for (String missingState : missingPropertyStates) {
+                writer.write("  " + missingState + "\n");
+            }
+            
+            writer.write("\n");
+        } else {
+            EuphoriaCompanion.LOGGER.debug("No missing property states to write to report");
+        }
+    }
+    
+    /**
+     * Writes missing property states from a file instead of detecting them
+     * 
+     * @param writer BufferedWriter to write to
+     * @param missingPropertiesPath Path to the file containing missing property states
+     * @throws IOException If an error occurs while reading or writing
+     */
+    private static void writeMissingPropertyStatesFromFile(BufferedWriter writer, Path missingPropertiesPath, Path logsDir) throws IOException {
+        List<String> missingPropertyStates = new ArrayList<>();
+        
+        try {
+            // Read all lines after the header (first 3 lines)
+            List<String> allLines = Files.readAllLines(missingPropertiesPath);
+            if (allLines.size() > 3) {
+                for (int i = 3; i < allLines.size(); i++) {
+                    String line = allLines.get(i).trim();
+                    if (!line.isEmpty()) {
+                        missingPropertyStates.add(line);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            EuphoriaCompanion.LOGGER.error("Error reading missing property states file: {}", e.getMessage());
+            return;
+        }
+        
+        // Log how many we found
+        EuphoriaCompanion.LOGGER.info("Read {} missing property states from file", missingPropertyStates.size());
+        
+        // Write them to the report
+        if (!missingPropertyStates.isEmpty()) {
+            writer.write("============ MISSING PROPERTY STATES ============\n");
+            writer.write("The following property states are missing from the shader:\n");
+            
+            for (String missingState : missingPropertyStates) {
+                writer.write("  " + missingState + "\n");
+            }
+            
+            writer.write("\n");
+        } else {
+            EuphoriaCompanion.LOGGER.info("No missing property states found in file");
+        }
     }
 
     private static void writeMissingBlocksByCategoryAndMod(BufferedWriter writer, Map<BlockRenderCategory, Set<String>> categorizedMissingBlocks) throws IOException {
@@ -262,18 +460,57 @@ public class BlockReporter {
 
         // Categorize each missing block
         for (String blockId : missingBlocks) {
-            // Split into namespace and path for 1.21.2 compatibility
-            String[] parts = blockId.split(":", 2);
-            if (parts.length != 2) {
-                continue; // Skip invalid identifiers
+            // Parse the block identifier using our improved parser
+            String baseBlockId;
+            Set<BlockPropertyExtractor.BlockStateProperty> properties = new HashSet<>();
+            
+            // Check if the block might have properties
+            boolean hasProperties = blockId.contains(":") && blockId.contains("=");
+            
+            if (hasProperties) {
+                // Use the improved BlockPropertyExtractor to parse the block identifier
+                BlockPropertyExtractor.ParsedBlockIdentifier parsed = 
+                    BlockPropertyExtractor.parseBlockIdentifier(blockId);
+                
+                baseBlockId = parsed.blockName;
+                properties = parsed.properties;
+                
+                // If we couldn't find any properties, treat it as a regular block
+                if (properties.isEmpty()) {
+                    baseBlockId = blockId;
+                }
+            } else {
+                // Regular block without properties
+                baseBlockId = blockId;
             }
-            // Use getOrEmpty for 1.21.2 compatibility
+            
+            // Split into namespace and path for compatibility
+            String[] parts = baseBlockId.split(":", 2);
+            if (parts.length != 2) {
+                // Block doesn't have a namespace, add minecraft: namespace
+                baseBlockId = "minecraft:" + baseBlockId;
+                parts = baseBlockId.split(":", 2);
+                if (parts.length != 2) {
+                    continue; // Skip invalid identifiers
+                }
+                EuphoriaCompanion.LOGGER.debug("Added minecraft namespace: {}", baseBlockId);
+            }
+            
+            // Use getOrEmpty for compatibility
             Optional<Block> blockOptional = Registries.BLOCK.getOrEmpty(Identifier.of(parts[0], parts[1]));
             if (blockOptional.isEmpty()) {
                 continue;
             }
+            
             Block block = blockOptional.get();
-
+            
+            // If there are properties, verify the block supports them
+            if (!properties.isEmpty() && !BlockPropertyExtractor.matchesFileProperties(block, properties)) {
+                EuphoriaCompanion.LOGGER.debug("Block {} doesn't support properties: {}", blockId, properties);
+                continue;
+            }
+            
+            // Get render category and add to result
             BlockRenderCategory category = BlockRenderHelper.getRenderCategory(block);
             result.get(category).add(blockId);
         }
