@@ -69,7 +69,7 @@ public class BlockPropertyExtractor {
 
                 EuphoriaCompanion.LOGGER.debug("Parsed block: {} with {} properties", parsed.blockName, parsed.properties.size());
                 for (BlockStateProperty prop : parsed.properties) {
-                    EuphoriaCompanion.LOGGER.debug("  - Property: {}={}", prop.getName(), prop.getValue());
+                    EuphoriaCompanion.LOGGER.debug("  - Property: {}={}", prop.name(), prop.value());
                 }
             }
         } catch (IOException e) {
@@ -111,7 +111,7 @@ public class BlockPropertyExtractor {
         }
 
         // Debug log only if there's something interesting to report
-        if (properties.size() > 0) {
+        if (!properties.isEmpty()) {
             EuphoriaCompanion.LOGGER.debug("Parsed block '{}' with {} properties", blockName, properties.size());
         }
 
@@ -188,136 +188,6 @@ public class BlockPropertyExtractor {
     }
 
     /**
-     * Gets all possible values for each property of a block
-     *
-     * @param block The block to get property values for
-     * @return A map of property names to their possible values
-     */
-    public static Map<String, Set<String>> getAllPropertyValues(Block block) {
-        // Check cache first
-        if (blockPropertyValuesCache.containsKey(block)) {
-            return blockPropertyValuesCache.get(block);
-        }
-
-        Map<String, Set<String>> propertyValues = new HashMap<>();
-
-        try {
-            // Get all properties from the block state manager
-            Collection<Property<?>> properties = block.getStateManager().getProperties();
-
-            // For each property, get all possible values
-            for (Property<?> property : properties) {
-                String name = property.getName();
-                Set<String> values = new HashSet<>();
-
-                // Use reflection to get property values - most reliable cross-version approach
-                Collection<? extends Comparable<?>> possibleValues = getPropertyValuesViaReflection(property);
-
-                // Add all values to the set
-                for (Comparable<?> value : possibleValues) {
-                    values.add(value.toString());
-                }
-
-                propertyValues.put(name, values);
-            }
-        } catch (Exception e) {
-            EuphoriaCompanion.LOGGER.debug("Error getting property values for block {}: {}", Registries.BLOCK.getId(block), e.getMessage());
-        }
-
-        // Cache the result
-        blockPropertyValuesCache.put(block, propertyValues);
-        return propertyValues;
-    }
-
-    /**
-     * Finds missing property states for a block when compared to known states from a file
-     *
-     * @param block           The block to check
-     * @param knownProperties Properties already defined in a shader file
-     * @return A list of missing property combinations formatted as property strings
-     */
-    public static List<String> findMissingPropertyStates(Block block, Set<BlockStateProperty> knownProperties) {
-        List<String> missingStates = new ArrayList<>();
-
-        if (knownProperties == null || knownProperties.isEmpty()) {
-            return missingStates; // No known properties to compare against
-        }
-
-        try {
-            EuphoriaCompanion.LOGGER.debug("Finding missing property states for block {} with {} known properties", Registries.BLOCK.getId(block), knownProperties.size());
-
-            // Group known properties by property name
-            Map<String, Set<String>> knownPropertyValues = new HashMap<>();
-            for (BlockStateProperty property : knownProperties) {
-                knownPropertyValues.computeIfAbsent(property.getName(), k -> new HashSet<>()).add(property.getValue());
-            }
-
-            // Get all possible property values for the block
-            Map<String, Set<String>> allPropertyValues = getAllPropertyValues(block);
-
-            // Keep only essential logs for important information
-
-            // Check for missing property values
-            Map<String, Set<String>> missingPropertyValues = new HashMap<>();
-            for (Map.Entry<String, Set<String>> entry : allPropertyValues.entrySet()) {
-                String propertyName = entry.getKey();
-                Set<String> possibleValues = entry.getValue();
-
-                // If this property is used in the known properties, check for missing values
-                if (knownPropertyValues.containsKey(propertyName)) {
-                    Set<String> knownValues = knownPropertyValues.get(propertyName);
-
-                    // Find values that are in possibleValues but not in knownValues
-                    Set<String> missing = new HashSet<>(possibleValues);
-                    missing.removeAll(knownValues);
-
-                    if (!missing.isEmpty()) {
-                        EuphoriaCompanion.LOGGER.debug("  Found {} missing values for property '{}'", missing.size(), propertyName);
-                        missingPropertyValues.put(propertyName, missing);
-                    }
-                }
-            }
-
-            if (missingPropertyValues.isEmpty()) {
-                return missingStates; // No missing property values
-            }
-
-            // Generate missing property combinations
-            String blockId = Registries.BLOCK.getId(block).toString();
-
-            EuphoriaCompanion.LOGGER.debug("Generating missing property states for block {}", blockId);
-
-            // If there's only one property with missing values, it's simple
-            if (missingPropertyValues.size() == 1) {
-                String propertyName = missingPropertyValues.keySet().iterator().next();
-                Set<String> missingValues = missingPropertyValues.get(propertyName);
-
-                for (String value : missingValues) {
-                    String missingState = blockId + ":" + propertyName + "=" + value;
-                    missingStates.add(missingState);
-                }
-            } else {
-                // Multiple properties with missing values - need to generate combinations
-                // This is complex and would require generating valid combinations from block states
-                // For now, we'll just report each missing property independently to avoid complexity
-                for (Map.Entry<String, Set<String>> entry : missingPropertyValues.entrySet()) {
-                    String propertyName = entry.getKey();
-                    for (String value : entry.getValue()) {
-                        String missingState = blockId + ":" + propertyName + "=" + value;
-                        missingStates.add(missingState);
-                    }
-                }
-            }
-
-            EuphoriaCompanion.LOGGER.debug("Generated {} missing property states for block {}", missingStates.size(), blockId);
-        } catch (Exception e) {
-            EuphoriaCompanion.LOGGER.debug("Error finding missing property states for block {}: {}", Registries.BLOCK.getId(block), e.getMessage());
-        }
-
-        return missingStates;
-    }
-
-    /**
      * Compares a block's properties with properties from a properties file
      *
      * @param block          The block to compare
@@ -337,8 +207,7 @@ public class BlockPropertyExtractor {
             boolean found = false;
             for (BlockStateProperty blockProperty : blockProperties) {
                 // Case-insensitive comparison for property values
-                if (blockProperty.getName().equals(fileProperty.getName()) && 
-                    blockProperty.getValue().equalsIgnoreCase(fileProperty.getValue())) {
+                if (blockProperty.name().equals(fileProperty.name()) && blockProperty.value().equalsIgnoreCase(fileProperty.value())) {
                     found = true;
                     break;
                 }
@@ -352,91 +221,12 @@ public class BlockPropertyExtractor {
     }
 
     /**
-     * Gets all possible variations of a block with properties
-     *
-     * @param block The block to get variations for
-     * @return A list of strings in the format "block_id:property1=value1:property2=value2"
-     */
-    public static List<String> getAllBlockVariations(Block block) {
-        List<String> variations = new ArrayList<>();
-        String blockId = Registries.BLOCK.getId(block).toString();
-
-        try {
-            // Get all possible block states
-            Collection<BlockState> states = block.getStateManager().getStates();
-
-            if (states.size() <= 1) {
-                // Block has no properties or only one state
-                variations.add(blockId);
-                return variations;
-            }
-
-            // Extract properties for each state
-            for (BlockState state : states) {
-                if (state.getProperties().isEmpty()) {
-                    variations.add(blockId);
-                    continue;
-                }
-
-                StringBuilder sb = new StringBuilder(blockId);
-
-                // Use mod:block:prop1=val1:prop2=val2 format
-                for (Property<?> property : state.getProperties()) {
-                    sb.append(":").append(property.getName()).append("=").append(state.get(property).toString());
-                }
-
-                variations.add(sb.toString());
-            }
-        } catch (Exception e) {
-            EuphoriaCompanion.LOGGER.debug("Error getting variations for block {}: {}", blockId, e.getMessage());
-            // Fallback to just the block ID
-            variations.add(blockId);
-        }
-
-        return variations;
-    }
-
-    /**
      * Clears all caches
      */
     public static void clearCaches() {
         filePropertyCache.clear();
         blockPropertyCache.clear();
         blockPropertyValuesCache.clear();
-    }
-
-    /**
-     * Helper method for BlockReporter to get property values in a version-compatible way
-     *
-     * @param property The property to get values for
-     * @return A collection of all possible values for the property
-     */
-    public static Collection<? extends Comparable<?>> getPropertyValuesForReporter(Property<?> property) {
-        return getPropertyValuesViaReflection(property);
-    }
-
-    /**
-     * Compatibility method for 1.20.1 and earlier
-     *
-     * @param property The block property
-     * @return A collection of possible values
-     */
-    @SuppressWarnings("unchecked")
-    private static <T extends Comparable<T>> Collection<T> getPropertyValuesAsCollection(Property<T> property) {
-        // This will work on 1.20.1 and earlier
-        return property.getValues();
-    }
-
-    /**
-     * Compatibility method for 1.21.2+
-     *
-     * @param property The block property
-     * @return A collection of possible values
-     */
-    @SuppressWarnings("unchecked")
-    private static <T extends Comparable<T>> Collection<T> getPropertyValuesAsList(Property<T> property) {
-        // This will work on 1.21.2+
-        return property.getValues();
     }
 
     /**
@@ -501,7 +291,7 @@ public class BlockPropertyExtractor {
                 Block block = null;
                 // Find a block that has this property
                 for (Block testBlock : Registries.BLOCK) {
-                    boolean hasProperty = false;
+                    boolean hasProperty;
                     try {
                         hasProperty = testBlock.getStateManager().getProperties().contains(property);
                     } catch (Exception e) {
@@ -551,35 +341,7 @@ public class BlockPropertyExtractor {
     /**
      * Represents a block state property with name and value
      */
-    public static class BlockStateProperty {
-        private final String name;
-        private final String value;
-
-        public BlockStateProperty(String name, String value) {
-            this.name = name;
-            this.value = value;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public String getValue() {
-            return value;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            BlockStateProperty that = (BlockStateProperty) o;
-            return Objects.equals(name, that.name) && Objects.equals(value, that.value);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(name, value);
-        }
+    public record BlockStateProperty(String name, String value) {
 
         @Override
         public String toString() {
@@ -590,13 +352,6 @@ public class BlockPropertyExtractor {
     /**
      * Helper class to store parsed block identifier information
      */
-    public static class ParsedBlockIdentifier {
-        public final String blockName;
-        public final Set<BlockStateProperty> properties;
-
-        public ParsedBlockIdentifier(String blockName, Set<BlockStateProperty> properties) {
-            this.blockName = blockName;
-            this.properties = properties;
-        }
+    public record ParsedBlockIdentifier(String blockName, Set<BlockStateProperty> properties) {
     }
 }

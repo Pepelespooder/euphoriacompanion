@@ -6,11 +6,7 @@ import eclipse.euphoriacompanion.util.BlockPropertyExtractor;
 import eclipse.euphoriacompanion.util.BlockPropertyRegistry;
 import eclipse.euphoriacompanion.util.BlockRegistryHelper;
 import eclipse.euphoriacompanion.util.MCVersionChecker;
-import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.registry.Registries;
-import net.minecraft.state.property.Property;
-import net.minecraft.util.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
@@ -64,10 +60,10 @@ public class ShaderPackProcessor {
         // Initialize debug writer
         initDebugWriter();
         writeDebug("Starting shader pack processing");
-        
+
         // Clear all caches to ensure we read fresh data
         BlockPropertyExtractor.clearCaches();
-        
+
         // Reset the singleton instance of the registry completely to force a full reload
         BlockPropertyRegistry.resetInstance();
         BlockPropertyRegistry.getInstance(gameDir).clearAll();
@@ -78,13 +74,12 @@ public class ShaderPackProcessor {
 
         try {
             Path shaderpacksDir = gameDir.resolve("shaderpacks");
-            boolean anyValidShaderpack = false;
+            boolean anyValidShaderpack;
 
             if (!Files.exists(shaderpacksDir)) {
                 try {
                     Files.createDirectories(shaderpacksDir);
-                    EuphoriaCompanion.LOGGER.info("Created shaderpacks directory");
-                    writeDebug("Created shaderpacks directory at " + shaderpacksDir);
+                    EuphoriaCompanion.LOGGER.debug("Created shaderpacks directory at {}", shaderpacksDir);
                 } catch (IOException e) {
                     EuphoriaCompanion.LOGGER.error("Failed to create shaderpacks directory", e);
                     writeDebug("ERROR: Failed to create shaderpacks directory: " + e.getMessage());
@@ -113,118 +108,117 @@ public class ShaderPackProcessor {
 
             // Create a combined set of all shader blocks
             Set<String> allShaderBlocks = new HashSet<>();
-            
+
+            // Store data for each shader pack to avoid reading twice
+            Map<Path, Set<String>> packBlocksMap = new HashMap<>();
+            Map<Path, Set<String>> expandedBlocksMap = new HashMap<>();
+            Map<Path, Map<String, Set<BlockPropertyExtractor.BlockStateProperty>>> packPropertiesMap = new HashMap<>();
+            Map<Path, String> packNamesMap = new HashMap<>();
+
             // First scan for all shader blocks
             try (DirectoryStream<Path> scanStream = Files.newDirectoryStream(shaderpacksDir)) {
                 for (Path shaderpackPath : scanStream) {
-                    if (Files.isDirectory(shaderpackPath) || 
-                        (Files.isRegularFile(shaderpackPath) && shaderpackPath.getFileName().toString().toLowerCase().endsWith(".zip"))) {
+                    String shaderpackName = shaderpackPath.getFileName().toString();
+                    packNamesMap.put(shaderpackPath, shaderpackName);
+
+                    if (Files.isDirectory(shaderpackPath) || (Files.isRegularFile(shaderpackPath) && shaderpackName.toLowerCase().endsWith(".zip"))) {
                         Set<String> packBlocks = readShaderBlockProperties(shaderpackPath);
+                        Map<String, Set<BlockPropertyExtractor.BlockStateProperty>> blockPropertiesMap = new HashMap<>();
+
+                        // Get block properties from the properties file
+                        if (Files.isDirectory(shaderpackPath)) {
+                            Path blockPropertiesPath = shaderpackPath.resolve("shaders/block.properties");
+                            if (Files.exists(blockPropertiesPath)) {
+                                blockPropertiesMap = BlockPropertyExtractor.parsePropertiesFile(blockPropertiesPath);
+                            }
+                        } else {
+                            try (FileSystem zipFs = FileSystems.newFileSystem(shaderpackPath, (ClassLoader) null)) {
+                                Path blockPropertiesPath = zipFs.getPath("/shaders/block.properties");
+                                if (Files.exists(blockPropertiesPath)) {
+                                    blockPropertiesMap = BlockPropertyExtractor.parsePropertiesFile(blockPropertiesPath);
+                                }
+                            } catch (IOException e) {
+                                continue;
+                            }
+                        }
+
+                        // Store the data for this pack
+                        packBlocksMap.put(shaderpackPath, packBlocks);
+                        packPropertiesMap.put(shaderpackPath, blockPropertiesMap);
+
+                        // Process the blocks to expand any blockstates using the properties
+                        Set<String> expandedBlocks = new HashSet<>(packBlocks);
+                        ensureAllBlockstatesAdded(expandedBlocks, blockPropertiesMap);
+                        expandedBlocksMap.put(shaderpackPath, expandedBlocks);
+
+                        // Add both original and expanded blocks to the combined set
                         allShaderBlocks.addAll(packBlocks);
+                        allShaderBlocks.addAll(expandedBlocks);
                     }
                 }
             } catch (IOException e) {
                 EuphoriaCompanion.LOGGER.error("Failed to scan shaderpacks directory", e);
                 writeDebug("ERROR: Failed to scan shaderpacks directory: " + e.getMessage());
             }
-            
-            // No longer using property registry - using direct comparison instead
-            
-            // Now process each shader pack
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(shaderpacksDir)) {
-                for (Path shaderpackPath : stream) {
-                    String shaderpackName = shaderpackPath.getFileName().toString();
-                    Set<String> shaderBlocks;
-                    Map<String, Set<BlockPropertyExtractor.BlockStateProperty>> blockPropertiesMap = new HashMap<>();
 
-                    if (Files.isDirectory(shaderpackPath)) {
-                        EuphoriaCompanion.LOGGER.info("Processing shaderpack (Directory): {}", shaderpackName);
-                        writeDebug("Processing shaderpack (Directory): " + shaderpackName);
-                        shaderBlocks = readShaderBlockProperties(shaderpackPath);
-                        
-                        // Extract any block properties specified in the shader files
-                        Path blockPropertiesPath = shaderpackPath.resolve("shaders/block.properties");
-                        if (Files.exists(blockPropertiesPath)) {
-                            blockPropertiesMap = BlockPropertyExtractor.parsePropertiesFile(blockPropertiesPath);
-                            
-                            // No need to register properties - using direct comparison
-                        }
-                    } else if (Files.isRegularFile(shaderpackPath) && shaderpackName.toLowerCase().endsWith(".zip")) {
-                        EuphoriaCompanion.LOGGER.info("Processing shaderpack (ZIP): {}", shaderpackName);
-                        writeDebug("Processing shaderpack (ZIP): " + shaderpackName);
-                        try (FileSystem zipFs = FileSystems.newFileSystem(shaderpackPath, (ClassLoader) null)) {
-                            Path root = zipFs.getPath("/");
-                            shaderBlocks = readShaderBlockProperties(root);
-                            
-                            // Extract any block properties from ZIP
-                            Path blockPropertiesPath = zipFs.getPath("/shaders/block.properties");
-                            if (Files.exists(blockPropertiesPath)) {
-                                blockPropertiesMap = BlockPropertyExtractor.parsePropertiesFile(blockPropertiesPath);
-                                
-                                // No need to register properties - using direct comparison
-                            }
-                        } catch (IOException e) {
-                            EuphoriaCompanion.LOGGER.error("Failed to process zip file {}", shaderpackName, e);
-                            writeDebug("ERROR: Failed to process zip file " + shaderpackName + ": " + e.getMessage());
-                            continue;
-                        }
-                    } else {
-                        EuphoriaCompanion.LOGGER.info("Skipping {} - not a directory or zip file", shaderpackName);
-                        writeDebug("Skipping " + shaderpackName + " - not a directory or zip file");
-                        continue;
-                    }
+            // FIRST: Generate the missing property states file
+            BlockPropertyRegistry registry = BlockPropertyRegistry.getInstance(gameDir);
 
-                    // Add all specific blockstates to shader blocks
-                    Set<String> expandedShaderBlocks = new HashSet<>(shaderBlocks);
-                    ensureAllBlockstatesAdded(expandedShaderBlocks, blockPropertiesMap);
-                    
-                    if (!expandedShaderBlocks.isEmpty()) {
-                        anyValidShaderpack = true;
-                        writeDebug("Found " + expandedShaderBlocks.size() + " blocks in " + shaderpackName + 
-                                   " (including " + (expandedShaderBlocks.size() - shaderBlocks.size()) + " expanded blockstates)");
-                    } else {
-                        writeDebug("No blocks found in " + shaderpackName);
-                    }
-                    BlockReporter.processShaderBlocks(shaderpackName, expandedShaderBlocks, gameBlocks, logsDir, blocksByMod, blockPropertiesMap);
+            // Process all shader blocks to build the used properties registry
+            registry.processAllShaderBlocks(allShaderBlocks);
+
+            // Find missing property states using our improved registry
+            List<String> missingPropertyStates = registry.findAllMissingPropertyStates();
+            writeDebug("Found " + missingPropertyStates.size() + " missing property states using the improved registry");
+
+            // Write missing property states to a file
+            // Re-use the logs directory already created earlier
+            Path missingPropertiesPath = logsDir.resolve("missing_property_states.txt");
+            try (BufferedWriter writer = Files.newBufferedWriter(missingPropertiesPath)) {
+                writer.write("============ MISSING PROPERTY STATES ============\n");
+                writer.write("The following property states are missing from the shaders:\n\n");
+
+                for (String missingState : missingPropertyStates) {
+                    writer.write(missingState + "\n");
                 }
 
-                if (!anyValidShaderpack) {
-                    EuphoriaCompanion.LOGGER.error("No valid shaderpacks found!");
-                    writeDebug("ERROR: No valid shaderpacks found!");
-                }
-                
-                // Use our improved BlockPropertyRegistry for finding missing properties
-                BlockPropertyRegistry registry = BlockPropertyRegistry.getInstance(gameDir);
-                
-                // Process all shader blocks to build the used properties registry
-                registry.processAllShaderBlocks(allShaderBlocks);
-                
-                // Find missing property states using our improved registry
-                List<String> missingPropertyStates = registry.findAllMissingPropertyStates();
-                writeDebug("Found " + missingPropertyStates.size() + " missing property states using the improved registry");
-                
-                // Write missing property states to a file
-                // Re-use the logs directory already created earlier
-                Path missingPropertiesPath = logsDir.resolve("missing_property_states.txt");
-                try (BufferedWriter writer = Files.newBufferedWriter(missingPropertiesPath)) {
-                    writer.write("============ MISSING PROPERTY STATES ============\n");
-                    writer.write("The following property states are missing from the shaders:\n\n");
-                    
-                    for (String missingState : missingPropertyStates) {
-                        writer.write(missingState + "\n");
-                    }
-                    
-                    EuphoriaCompanion.LOGGER.info("Wrote {} missing property states to {}", 
-                        missingPropertyStates.size(), missingPropertiesPath);
-                    
-                    // Save the registry for future use
-                    registry.saveRegistry();
-                } catch (IOException e) {
-                    EuphoriaCompanion.LOGGER.error("Failed to write missing property states", e);
-                }
+                EuphoriaCompanion.LOGGER.debug("Wrote {} missing property states to {}", missingPropertyStates.size(), missingPropertiesPath);
+
+                // Save the registry for future use
+                registry.saveRegistry();
             } catch (IOException e) {
-                EuphoriaCompanion.LOGGER.error("Failed to process shaderpacks directory", e);
-                writeDebug("ERROR: Failed to process shaderpacks directory: " + e.getMessage());
+                EuphoriaCompanion.LOGGER.error("Failed to write missing property states", e);
+            }
+
+            // SECOND: Now process each shader pack for reports - after missing_property_states.txt has been created
+            anyValidShaderpack = false;
+
+            // Process each shader pack using the data we've already loaded
+            for (Path shaderpackPath : packBlocksMap.keySet()) {
+                String shaderpackName = packNamesMap.get(shaderpackPath);
+                Set<String> expandedShaderBlocks = expandedBlocksMap.get(shaderpackPath);
+                Map<String, Set<BlockPropertyExtractor.BlockStateProperty>> blockPropertiesMap = packPropertiesMap.get(shaderpackPath);
+
+                if (Files.isDirectory(shaderpackPath)) {
+                    EuphoriaCompanion.LOGGER.info("Processing shaderpack (Directory): {}", shaderpackName);
+                } else {
+                    EuphoriaCompanion.LOGGER.info("Processing shaderpack (ZIP): {}", shaderpackName);
+                }
+
+                if (!expandedShaderBlocks.isEmpty()) {
+                    anyValidShaderpack = true;
+                    writeDebug("Found " + expandedShaderBlocks.size() + " blocks in " + shaderpackName);
+                } else {
+                    writeDebug("No blocks found in " + shaderpackName);
+                }
+
+                // Generate the block comparison report
+                BlockReporter.processShaderBlocks(shaderpackName, expandedShaderBlocks, gameBlocks, logsDir, blocksByMod, blockPropertiesMap);
+            }
+
+            if (!anyValidShaderpack) {
+                EuphoriaCompanion.LOGGER.error("No valid shaderpacks found!");
+                writeDebug("ERROR: No valid shaderpacks found!");
             }
         } finally {
             writeDebug("Completed shader pack processing");
@@ -335,14 +329,13 @@ public class ShaderPackProcessor {
         String blockValues = keyValue[1].trim();
 
         // Split right side values into tokens - all logging is handled by writeDebug
-        String[] rightValues = blockValues.split("\\s+");
-        
+
         writeDebug("  Processing entry: Property '" + blockProperty + "' with values '" + blockValues + "'");
 
 
         // Check if this line contains block state properties
         boolean hasBlockStateProperties = blockProperty.contains(":");
-        
+
         for (String blockId : blockValues.split("\\s+")) {
             String trimmedId = blockId.trim();
             if (trimmedId.isEmpty() || trimmedId.startsWith("tags_")) {
@@ -352,42 +345,40 @@ public class ShaderPackProcessor {
 
             writeDebug("    Analyzing block ID: '" + trimmedId + "'");
 
-            
+
             if (hasBlockStateProperties) {
                 // Use our improved BlockPropertyExtractor to correctly parse property formats
                 writeDebug("    Processing block with potential properties: " + blockProperty);
-                
+
                 // Parse the block identifier to extract block name and properties
-                BlockPropertyExtractor.ParsedBlockIdentifier parsed = 
-                    BlockPropertyExtractor.parseBlockIdentifier(blockProperty);
-                
+                BlockPropertyExtractor.ParsedBlockIdentifier parsed = BlockPropertyExtractor.parseBlockIdentifier(blockProperty);
+
                 // Log what we've parsed
-                writeDebug("    Parsed block name: " + parsed.blockName + " with " + 
-                          parsed.properties.size() + " properties");
-                
+                writeDebug("    Parsed block name: " + parsed.blockName() + " with " + parsed.properties().size() + " properties");
+
                 // If we found properties
-                if (!parsed.properties.isEmpty()) {
+                if (!parsed.properties().isEmpty()) {
                     // If this is a vanilla block without namespace, add the minecraft namespace
                     String blockToAdd = blockProperty;
-                    
-                    if (!parsed.blockName.contains(":")) {
+
+                    if (!parsed.blockName().contains(":")) {
                         // Add minecraft namespace for vanilla blocks
-                        String vanillaBlock = "minecraft:" + parsed.blockName;
+                        String vanillaBlock = "minecraft:" + parsed.blockName();
                         writeDebug("    Converting vanilla block with properties: " + blockProperty + " -> " + vanillaBlock);
-                        
+
                         // Reconstruct with minecraft namespace
                         StringBuilder sb = new StringBuilder(vanillaBlock);
-                        for (BlockPropertyExtractor.BlockStateProperty prop : parsed.properties) {
-                            sb.append(":").append(prop.getName()).append("=").append(prop.getValue());
+                        for (BlockPropertyExtractor.BlockStateProperty prop : parsed.properties()) {
+                            sb.append(":").append(prop.name()).append("=").append(prop.value());
                         }
                         blockToAdd = sb.toString();
                     }
-                    
-                    boolean isNewBlock = shaderBlocks.add(blockToAdd);
+
+                    shaderBlocks.add(blockToAdd);
                     writeDebug("    ADDED block with properties '" + blockToAdd + "' from value '" + trimmedId + "'");
                 } else {
                     // No properties found, add as regular block
-                    boolean isNewBlock = shaderBlocks.add(blockProperty);
+                    shaderBlocks.add(blockProperty);
                     writeDebug("    ADDED block '" + blockProperty + "' from value '" + trimmedId + "'");
                 }
             } else {
@@ -397,7 +388,7 @@ public class ShaderPackProcessor {
                     // Special case for when we detect a property format (with colons and = sign) in the value
                     if (trimmedId.contains(":") && trimmedId.contains("=")) {
                         writeDebug("    Detected property format in value: " + trimmedId);
-                        
+
                         // Keep the original format for property detection
                         boolean isNewBlock = shaderBlocks.add(trimmedId);
                         if (isNewBlock) {
@@ -425,35 +416,33 @@ public class ShaderPackProcessor {
         // Special handling for property formats based on patterns, not specific block names
         if (trimmedId.contains(":") && trimmedId.contains("=")) {
             writeDebug("      Processing potential block with properties: " + trimmedId);
-            
+
             // Use our improved BlockPropertyExtractor to correctly handle property parsing
-            BlockPropertyExtractor.ParsedBlockIdentifier parsed = 
-                BlockPropertyExtractor.parseBlockIdentifier(trimmedId);
-            
-            writeDebug("      Parsed block name: " + parsed.blockName + " with " + 
-                      parsed.properties.size() + " properties");
-                      
+            BlockPropertyExtractor.ParsedBlockIdentifier parsed = BlockPropertyExtractor.parseBlockIdentifier(trimmedId);
+
+            writeDebug("      Parsed block name: " + parsed.blockName() + " with " + parsed.properties().size() + " properties");
+
             // Found properties, return the trimmed ID as is since it contains property information
-            if (!parsed.properties.isEmpty()) {
+            if (!parsed.properties().isEmpty()) {
                 // If this is a vanilla block without namespace, add the minecraft namespace
-                if (!parsed.blockName.contains(":")) {
-                    String vanillaBlock = "minecraft:" + parsed.blockName;
+                if (!parsed.blockName().contains(":")) {
+                    String vanillaBlock = "minecraft:" + parsed.blockName();
                     writeDebug("      Converting vanilla block with properties: " + trimmedId + " -> " + vanillaBlock);
-                    
+
                     // Reconstruct with minecraft namespace
                     StringBuilder sb = new StringBuilder(vanillaBlock);
-                    for (BlockPropertyExtractor.BlockStateProperty prop : parsed.properties) {
-                        sb.append(":").append(prop.getName()).append("=").append(prop.getValue());
+                    for (BlockPropertyExtractor.BlockStateProperty prop : parsed.properties()) {
+                        sb.append(":").append(prop.name()).append("=").append(prop.value());
                     }
                     return sb.toString();
                 }
-                
+
                 writeDebug("      Found block with properties: " + trimmedId);
                 return trimmedId;
             }
             // Otherwise, proceed with normal processing
         }
-        
+
         // Normal processing for regular blocks
         String[] segments = trimmedId.split(":");
         List<String> validSegments = new ArrayList<>();
@@ -500,70 +489,57 @@ public class ShaderPackProcessor {
             return false;
         }
     }
-    
+
     /**
      * Processes blocks with properties and identifies missing property states.
      * This optimized version only checks properties that are actually used by the user,
      * rather than checking every possible block variation.
-     * 
-     * @param shaderBlocks Set of blocks to modify
+     *
+     * @param shaderBlocks       Set of blocks to modify
      * @param blockPropertiesMap Map of blockIDs to their properties from the properties file
      */
-    private static void ensureAllBlockstatesAdded(Set<String> shaderBlocks, 
-            Map<String, Set<BlockPropertyExtractor.BlockStateProperty>> blockPropertiesMap) {
+    private static void ensureAllBlockstatesAdded(Set<String> shaderBlocks, Map<String, Set<BlockPropertyExtractor.BlockStateProperty>> blockPropertiesMap) {
         if (blockPropertiesMap.isEmpty()) {
             writeDebug("No block properties map provided, skipping property checks");
             return;
         }
-        
+
         writeDebug("Processing properties for " + blockPropertiesMap.size() + " block types");
-        
+
         // Track blocks with their used properties
         // Map of base block ID -> property name -> set of property values
         Map<String, Map<String, Set<String>>> blockPropertiesUsed = new HashMap<>();
-        
+
         // Track blocks with their used properties without registry
         for (String blockId : shaderBlocks) {
             // Skip blocks without properties
             if (!blockId.contains("=")) {
                 continue;
             }
-            
+
             // Extract properties using our parser
-            BlockPropertyExtractor.ParsedBlockIdentifier parsed = 
-                BlockPropertyExtractor.parseBlockIdentifier(blockId);
-            
+            BlockPropertyExtractor.ParsedBlockIdentifier parsed = BlockPropertyExtractor.parseBlockIdentifier(blockId);
+
             // Skip if no properties found
-            if (parsed.properties.isEmpty()) {
+            if (parsed.properties().isEmpty()) {
                 continue;
             }
-            
-            String baseBlockId = parsed.blockName;
+
+            String baseBlockId = parsed.blockName();
             if (!baseBlockId.contains(":")) {
                 baseBlockId = "minecraft:" + baseBlockId;
             }
-            
+
             // Store used properties
             Map<String, Set<String>> blockProps = blockPropertiesUsed.computeIfAbsent(baseBlockId, k -> new HashMap<>());
-            
+
             // Add each property value
-            for (BlockPropertyExtractor.BlockStateProperty prop : parsed.properties) {
-                blockProps.computeIfAbsent(prop.getName(), k -> new HashSet<>()).add(prop.getValue());
-                writeDebug("Found property: " + baseBlockId + ":" + prop.getName() + "=" + prop.getValue());
+            for (BlockPropertyExtractor.BlockStateProperty prop : parsed.properties()) {
+                blockProps.computeIfAbsent(prop.name(), k -> new HashSet<>()).add(prop.value());
+                writeDebug("Found property: " + baseBlockId + ":" + prop.name() + "=" + prop.value());
             }
         }
     }
-    
-    
-    /**
-     * Find a property with the given name on a block
-     */
-    private static Optional<Property<?>> findBlockProperty(Block block, String propertyName) {
-        for (Property<?> property : block.getStateManager().getProperties()) {
-            if (property.getName().equals(propertyName)) {
-                return Optional.of(property);
-            }
-        }
-        return Optional.empty();
-    }
+
+
 }
