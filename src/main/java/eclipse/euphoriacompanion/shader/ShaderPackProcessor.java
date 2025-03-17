@@ -228,13 +228,50 @@ public class ShaderPackProcessor {
 
     private static Set<String> readShaderBlockProperties(Path shaderpackPath) {
         Set<String> shaderBlocks = new HashSet<>();
-        Path blockPropertiesPath = shaderpackPath.resolve("shaders/block.properties");
-        if (!Files.exists(blockPropertiesPath)) {
-            EuphoriaCompanion.LOGGER.warn("No block.properties found in {}", shaderpackPath);
-            writeDebug("No block.properties found in " + shaderpackPath);
-            return shaderBlocks;
+        
+        // Handle differently based on whether it's a directory or zip file
+        if (Files.isDirectory(shaderpackPath)) {
+            // For directory-based shader packs
+            Path blockPropertiesPath = shaderpackPath.resolve("shaders/block.properties");
+            if (!Files.exists(blockPropertiesPath)) {
+                EuphoriaCompanion.LOGGER.warn("No block.properties found in directory {}", shaderpackPath);
+                writeDebug("No block.properties found in directory " + shaderpackPath);
+                return shaderBlocks;
+            }
+            
+            try {
+                shaderBlocks = readPropertiesFile(blockPropertiesPath);
+            } catch (IOException e) {
+                EuphoriaCompanion.LOGGER.error("Failed to read block.properties file from directory", e);
+                writeDebug("ERROR: Failed to read block.properties file from directory: " + e.getMessage());
+            }
+        } else {
+            // For ZIP-based shader packs
+            try (FileSystem zipFs = FileSystems.newFileSystem(shaderpackPath, (ClassLoader) null)) {
+                Path blockPropertiesPath = zipFs.getPath("/shaders/block.properties");
+                if (!Files.exists(blockPropertiesPath)) {
+                    EuphoriaCompanion.LOGGER.warn("No block.properties found in ZIP {}", shaderpackPath);
+                    writeDebug("No block.properties found in ZIP " + shaderpackPath);
+                    return shaderBlocks;
+                }
+                
+                try {
+                    shaderBlocks = readPropertiesFile(blockPropertiesPath);
+                } catch (IOException e) {
+                    EuphoriaCompanion.LOGGER.error("Failed to read block.properties file from ZIP", e);
+                    writeDebug("ERROR: Failed to read block.properties file from ZIP: " + e.getMessage());
+                }
+            } catch (IOException e) {
+                EuphoriaCompanion.LOGGER.error("Failed to open ZIP file: {}", shaderpackPath, e);
+                writeDebug("ERROR: Failed to open ZIP file: " + e.getMessage());
+            }
         }
-
+        
+        return shaderBlocks;
+    }
+    
+    private static Set<String> readPropertiesFile(Path blockPropertiesPath) throws IOException {
+        Set<String> shaderBlocks = new HashSet<>();
         writeDebug("Reading block.properties from " + blockPropertiesPath);
         int mcVersion = MCVersionChecker.getMCVersion();
         Deque<Boolean> conditionStack = new ArrayDeque<>();
@@ -297,9 +334,6 @@ public class ShaderPackProcessor {
             }
             // Log total blocks count to debug only
             writeDebug("Total blocks read from shader properties: " + shaderBlocks.size());
-        } catch (IOException e) {
-            EuphoriaCompanion.LOGGER.error("Failed to read block.properties file", e);
-            writeDebug("ERROR: Failed to read block.properties file: " + e.getMessage());
         }
         return shaderBlocks;
     }
