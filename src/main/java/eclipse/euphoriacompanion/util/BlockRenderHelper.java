@@ -124,9 +124,6 @@ public class BlockRenderHelper {
                 if (model != null) {
                     // Special handling for 1.21.5+ where getQuads was changed
                     if (MCVersionChecker.isMinecraft1215OrLater()) {
-                        // For 1.21.5+, use block properties since getQuads causes NoSuchMethodError
-                        EuphoriaCompanion.LOGGER.info("Block {} - Using 1.21.5 property-based approach", Registries.BLOCK.getId(block));
-                        
                         // For 1.21.5, use block properties to determine if it's likely a full cube
                         try {
                             boolean isLikelyFullCube = state.isOpaque() && state.isSolidBlock(client.world, BlockPos.ORIGIN) && !state.hasBlockEntity();
