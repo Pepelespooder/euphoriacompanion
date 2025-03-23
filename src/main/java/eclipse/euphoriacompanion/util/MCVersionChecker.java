@@ -26,12 +26,35 @@ public class MCVersionChecker {
                 String[] parts = version.split("\\.");
                 int major = Integer.parseInt(parts[0]);
                 int minor = Integer.parseInt(parts[1]);
-                int patch = parts.length > 2 ? Integer.parseInt(parts[2]) : 0;
+
+                // Handle patch version with potential pre-release suffix
+                int patch = 0;
+                if (parts.length > 2) {
+                    // Extract just the numeric part by splitting at first non-digit character
+                    String patchStr = parts[2];
+                    if (patchStr.contains("-")) {
+                        // If there's a pre-release suffix (like "5-rc"), take just the number part
+                        String[] patchParts = patchStr.split("-", 2);
+                        patchStr = patchParts[0];
+
+                        // Log error if we detect a snapshot/pre-release
+                        if (patchParts.length > 1) {
+                            EuphoriaCompanion.LOGGER.error("Detected snapshot/pre-release version: {}. Using only the numeric part.", version);
+                        }
+                    }
+                    try {
+                        patch = Integer.parseInt(patchStr);
+                    } catch (NumberFormatException e) {
+                        EuphoriaCompanion.LOGGER.error("Couldn't parse patch version from {}, using 0", patchStr);
+                    }
+                }
+
                 cachedVersion = major * 10000 + minor * 100 + patch;
                 return cachedVersion;
             } catch (Exception e) {
-                EuphoriaCompanion.LOGGER.error("Failed to parse Minecraft version: {}", version, e);
-                return 0;
+                EuphoriaCompanion.LOGGER.error("Failed to parse Minecraft version: {}. Assuming latest version.", version, e);
+                // Return very high version number to assume it's the latest version
+                return 99999; // This will pass any version check
             }
         } else {
             throw new RuntimeException("Could not get Minecraft version");
