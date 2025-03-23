@@ -122,25 +122,65 @@ public class BlockRenderHelper {
             if (client != null && client.getBakedModelManager() != null) {
                 BakedModel model = client.getBakedModelManager().getBlockModels().getModel(state);
                 if (model != null) {
-                    // Check if the model has quads in all directions
-                    boolean hasAllFaces = true;
-                    for (Direction direction : Direction.values()) {
-                        List<BakedQuad> quads = model.getQuads(state, direction, Objects.requireNonNull(client.world).getRandom());
-                        if (quads == null || quads.isEmpty()) {
-                            hasAllFaces = false;
-                            break;
+                    // Special handling for 1.21.5+ where getQuads was changed
+                    if (MCVersionChecker.isMinecraft1215OrLater()) {
+                        // For 1.21.5+, use block properties since getQuads causes NoSuchMethodError
+                        EuphoriaCompanion.LOGGER.info("Block {} - Using 1.21.5 property-based approach", Registries.BLOCK.getId(block));
+                        
+                        // For 1.21.5, use block properties to determine if it's likely a full cube
+                        try {
+                            boolean isLikelyFullCube = state.isOpaque() && state.isSolidBlock(client.world, BlockPos.ORIGIN) && !state.hasBlockEntity();
+
+                            // Try to check outline shape if possible
+                            try {
+                                double avgSideLength = state.getOutlineShape(client.world, BlockPos.ORIGIN).getBoundingBox().getAverageSideLength();
+                                isLikelyFullCube = isLikelyFullCube && avgSideLength > 0.96875; // 1/32 of a block
+                            } catch (Exception shapeEx) {
+                                // If shape check fails, just use the other properties
+                            }
+
+                            // Set result based on properties
+                            result = isLikelyFullCube;
+                            fullCubeModelCache.put(block, result);
+
+                            return result;
+                        } catch (Exception e) {
+                            // If property checks fail, log and use fallback approach
+                            EuphoriaCompanion.LOGGER.error("Block {} - Property checks failed in 1.21.5: {}", Registries.BLOCK.getId(block), e.getMessage());
+
+                            // Fallback - use opacity and solid checks only
+                            try {
+                                result = state.isOpaque() && state.isSolidBlock(client.world, null);
+                                fullCubeModelCache.put(block, result);
+                                return result;
+                            } catch (Exception ex) {
+                                // Last resort fallback
+                                result = state.isOpaque();
+                                fullCubeModelCache.put(block, result);
+                                return result;
+                            }
                         }
-                    }
+                    } else {
+                        // Pre-1.21.5 approach using model quads
+                        boolean hasAllFaces = true;
+                        for (Direction direction : Direction.values()) {
+                            List<BakedQuad> quads = model.getQuads(state, direction, Objects.requireNonNull(client.world).getRandom());
+                            if (quads == null || quads.isEmpty()) {
+                                hasAllFaces = false;
+                                break;
+                            }
+                        }
 
-                    // Also check for quads with null direction - a true cube should not have any
-                    List<BakedQuad> nullQuads = model.getQuads(state, null, Objects.requireNonNull(client.world).getRandom());
-                    int nullQuadCount = nullQuads != null ? nullQuads.size() : 0;
+                        // Also check for quads with null direction - a true cube should not have any
+                        List<BakedQuad> nullQuads = model.getQuads(state, null, Objects.requireNonNull(client.world).getRandom());
+                        int nullQuadCount = nullQuads != null ? nullQuads.size() : 0;
 
-                    // A true cube must have all directional faces AND no null quads
-                    if (hasAllFaces && nullQuadCount == 0) {
-                        result = true;
-                        fullCubeModelCache.put(block, true);
-                        return true;
+                        // A true cube must have all directional faces AND no null quads
+                        if (hasAllFaces && nullQuadCount == 0) {
+                            result = true;
+                            fullCubeModelCache.put(block, true);
+                            return true;
+                        }
                     }
                 }
             }

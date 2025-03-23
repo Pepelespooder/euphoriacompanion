@@ -8,6 +8,7 @@ import java.util.Optional;
 
 public class MCVersionChecker {
     public static final int MC_1_21_2 = 12102;
+    public static final int MC_1_21_5 = 12105;
 
     // Cache the version for performance
     private static int cachedVersion = -1;
@@ -78,6 +79,15 @@ public class MCVersionChecker {
      */
     public static boolean isMinecraft1212OrLater() {
         return isAtLeast(MC_1_21_2);
+    }
+    
+    /**
+     * Checks if the current Minecraft version is 1.21.5 or later
+     *
+     * @return true if running on Minecraft 1.21.5+
+     */
+    public static boolean isMinecraft1215OrLater() {
+        return isAtLeast(MC_1_21_5);
     }
 
     public static boolean evaluateCondition(String condition, int mcVersion) {
