@@ -6,12 +6,12 @@ import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.RenderLayers;
-import net.minecraft.client.render.model.BakedModel;
-import net.minecraft.client.render.model.BakedQuad;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -44,6 +44,8 @@ public class BlockRenderHelper {
             return fullCubeModelCache.get(block);
         }
 
+        // Basic checks that apply to all versions
+
         // Check if it's a block entity (never a full cube)
         try {
             if (state.hasBlockEntity()) {
@@ -60,143 +62,178 @@ public class BlockRenderHelper {
             return false;
         }
 
-        // Check if the block allows light to pass through it
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.world == null) {
+            // Can't check without a client/world, use a conservative fallback
+            fullCubeModelCache.put(block, false);
+            return false;
+        }
+
+        // Check 1: All sides must be solid full squares
+        // This specifically handles stairs, slabs, etc. which have some sides that aren't full
         try {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client != null && client.world != null) {
-                int opacity; // Max opacity value
-                boolean lightPasses = false;
-
-                // First, use version-specific method to check opacity
+            for (Direction direction : Direction.values()) {
                 try {
-                    if (MCVersionChecker.isMinecraft1212OrLater()) {
-                        // In MC 1.21.2+, getOpacity() takes no parameters
-                        opacity = (int) state.getClass().getMethod("getOpacity").invoke(state);
-                    } else {
-                        // In MC 1.21.1 and earlier, getOpacity() takes world and position
-                        opacity = state.getOpacity(client.world, BlockPos.ORIGIN);
-                    }
-
-                    // If opacity is less than max, light passes through
-                    if (opacity < 15) {
-                        lightPasses = true;
+                    // If any side is not a full solid square, it's not a full cube
+                    if (!state.isSideSolidFullSquare(client.world, BlockPos.ORIGIN, direction)) {
+                        fullCubeModelCache.put(block, false);
+                        return false;
                     }
                 } catch (Exception e) {
-                    // If opacity check fails, fall back to render layer check
-                    RenderLayer renderLayer = RenderLayers.getBlockLayer(state);
-                    if (renderLayer == RenderLayer.getTranslucent()) {
-                        // Only consider fully translucent blocks (not cutout for grass blocks)
-                        lightPasses = true;
-                    }
-                }
-
-                // If light passes through the block, it's not a "solid full cube" for our purposes
-                if (lightPasses) {
+                    // If this check fails for any direction, assume it's not a full cube
                     fullCubeModelCache.put(block, false);
                     return false;
                 }
             }
-        } catch (Exception ignored) {
-            // Continue with other checks if this fails
+        } catch (Exception generalException) {
+            // If the whole check fails (method doesn't exist), move to the next check
+            EuphoriaCompanion.LOGGER.debug("isSideSolidFullSquare check failed, moving to light check");
         }
 
-        boolean result = false;
-
-        try {
-            // Try multiple detection methods in order of reliability
-
-            // Method 1: Use the isFullCube method if available
-            try {
-                java.lang.reflect.Method isFullCubeMethod = state.getClass().getMethod("isFullCube");
-                Boolean methodResult = (Boolean) isFullCubeMethod.invoke(state);
-                if (methodResult != null) {
-                    result = methodResult;
-                    fullCubeModelCache.put(block, result);
-                    return result;
-                }
-            } catch (Exception ignored) {
+        // Check 2: Does the block, block light in all 6 directions
+        for (Direction direction : Direction.values()) {
+            // If light passes through any direction, the block is not a full cube
+            if (doesLightPassThroughDirection(state, direction, client)) {
+                fullCubeModelCache.put(block, false);
+                return false;
             }
+        }
 
-            // Method 2: Check the block model for faces in all directions
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client != null && client.getBakedModelManager() != null) {
-                BakedModel model = client.getBakedModelManager().getBlockModels().getModel(state);
-                if (model != null) {
-                    // Special handling for 1.21.5+ where getQuads was changed
-                    if (MCVersionChecker.isMinecraft1215OrLater()) {
-                        // For 1.21.5, use block properties to determine if it's likely a full cube
+        // If we reach here, the block blocks light in all 6 directions and all sides are full squares
+        // This is our complete definition of a "full cube"
+        fullCubeModelCache.put(block, true);
+        return true;
+    }
+
+    /**
+     * Checks if light passes through a specific face of a block.
+     *
+     * @param state     The block state to check
+     * @param direction The direction/face to check
+     * @param client    The Minecraft client instance
+     * @return true if light passes through, false if blocked
+     */
+    private static boolean doesLightPassThroughDirection(BlockState state, Direction direction, MinecraftClient client) {
+        try {
+            // Method 1: Use version-specific opacity check safely
+            int opacity = 15; // Default to max opacity
+
+            // Use reflection to safely handle method differences between versions
+            if (MCVersionChecker.isMinecraft1212OrLater()) {
+                // For MC 1.21.2+, try to use parameter-less getOpacity method
+                try {
+                    // Get the method reference and invoke it
+                    java.lang.reflect.Method opacityMethod = state.getClass().getMethod("getOpacity");
+                    Object result = opacityMethod.invoke(state);
+                    if (result instanceof Integer) {
+                        opacity = (Integer) result;
+                    }
+                } catch (NoSuchMethodException ignored) {
+                    // Method doesn't exist, continue with other methods
+                    EuphoriaCompanion.LOGGER.debug("No parameter-less getOpacity method found");
+                }
+            } else {
+                // For earlier versions, try the world+pos version but use reflection to avoid errors
+                try {
+                    // Use reflection to safely check if this method exists with the right parameters
+                    Method opacityMethod = getMethod(state);
+
+                    // If we found a valid method, use it
+                    if (opacityMethod != null) {
                         try {
-                            boolean isLikelyFullCube = state.isOpaque() && state.isSolidBlock(client.world, BlockPos.ORIGIN) && !state.hasBlockEntity();
-
-                            // Try to check outline shape if possible
+                            // Try calling through reflection to avoid direct method reference
+                            Object result = opacityMethod.invoke(state, client.world, BlockPos.ORIGIN);
+                            if (result instanceof Integer) {
+                                opacity = (Integer) result;
+                            }
+                        } catch (Exception methodInvokeError) {
+                            // Method exists but couldn't be called properly
+                            // Try direct call as last resort
                             try {
-                                double avgSideLength = state.getOutlineShape(client.world, BlockPos.ORIGIN).getBoundingBox().getAverageSideLength();
-                                isLikelyFullCube = isLikelyFullCube && avgSideLength > 0.96875; // 1/32 of a block
-                            } catch (Exception shapeEx) {
-                                // If shape check fails, just use the other properties
-                            }
-
-                            // Set result based on properties
-                            result = isLikelyFullCube;
-                            fullCubeModelCache.put(block, result);
-
-                            return result;
-                        } catch (Exception e) {
-                            // If property checks fail, log and use fallback approach
-                            EuphoriaCompanion.LOGGER.error("Block {} - Property checks failed in 1.21.5: {}", Registries.BLOCK.getId(block), e.getMessage());
-
-                            // Fallback - use opacity and solid checks only
-                            try {
-                                result = state.isOpaque() && state.isSolidBlock(client.world, null);
-                                fullCubeModelCache.put(block, result);
-                                return result;
-                            } catch (Exception ex) {
-                                // Last resort fallback
-                                result = state.isOpaque();
-                                fullCubeModelCache.put(block, result);
-                                return result;
+                                opacity = state.getOpacity(client.world, BlockPos.ORIGIN);
+                            } catch (Exception directCallError) {
+                                // Both approaches failed, keep default opacity
                             }
                         }
-                    } else {
-                        // Pre-1.21.5 approach using model quads
-                        boolean hasAllFaces = true;
-                        for (Direction direction : Direction.values()) {
-                            List<BakedQuad> quads = model.getQuads(state, direction, Objects.requireNonNull(client.world).getRandom());
-                            if (quads == null || quads.isEmpty()) {
-                                hasAllFaces = false;
-                                break;
-                            }
-                        }
-
-                        // Also check for quads with null direction - a true cube should not have any
-                        List<BakedQuad> nullQuads = model.getQuads(state, null, Objects.requireNonNull(client.world).getRandom());
-                        int nullQuadCount = nullQuads != null ? nullQuads.size() : 0;
-
-                        // A true cube must have all directional faces AND no null quads
-                        if (hasAllFaces && nullQuadCount == 0) {
-                            result = true;
-                            fullCubeModelCache.put(block, true);
-                            return true;
-                        }
+                    }
+                } catch (Exception e) {
+                    // Reflection approach failed entirely, try direct call
+                    try {
+                        opacity = state.getOpacity(client.world, BlockPos.ORIGIN);
+                    } catch (Exception ignored) {
+                        // Direct call failed too, keep default opacity
                     }
                 }
             }
 
-            // Method 3: Check if it's a solid opaque block (good fallback)
-            try {
-                result = state.isOpaque() && state.isSolidBlock(Objects.requireNonNull(client).world, null);
-                fullCubeModelCache.put(block, result);
-                return result;
-            } catch (Exception ignored) {
+            // Max opacity (15) means no light passes through
+            if (opacity < 15) {
+                return true; // Light passes through
             }
 
-        } catch (Exception e) {
-            EuphoriaCompanion.LOGGER.debug("Error checking if block is full cube: {}", e.getMessage());
-        }
+            // Method 2: Check if the block is translucent
+            try {
+                RenderLayer renderLayer = RenderLayers.getBlockLayer(state);
+                if (renderLayer == RenderLayer.getTranslucent()) {
+                    return true; // Translucent blocks let light through
+                }
+            } catch (Exception ignored) {
+                // Continue if this check fails
+            }
 
-        // Cache the result
-        fullCubeModelCache.put(block, result);
-        return result;
+            // Method 3: Check if the side is a solid full square using safe reflection
+            try {
+                // Check if the method exists first
+                boolean methodExists = isMethodExists(state);
+
+                // If the method exists, try to call it
+                if (methodExists) {
+                    if (!state.isSideSolidFullSquare(client.world, BlockPos.ORIGIN, direction)) {
+                        return true; // If the side isn't a full square, light probably passes
+                    }
+                }
+            } catch (Exception ignored) {
+                // Any failure means we skip this check
+            }
+
+            // Return false if we've made it through all checks without finding light passage
+            return false;
+        } catch (Exception e) {
+            // In case of any uncaught error, assume light might pass (safer assumption)
+            EuphoriaCompanion.LOGGER.debug("Error checking light passage in direction {}: {}", direction, e.getMessage());
+            return true;
+        }
+    }
+
+    private static boolean isMethodExists(BlockState state) {
+        boolean methodExists = false;
+        try {
+            for (Method method : state.getClass().getMethods()) {
+                if (method.getName().equals("isSideSolidFullSquare") && method.getParameterCount() >= 3) {
+                    methodExists = true;
+                    break;
+                }
+            }
+        } catch (Exception ignored) {
+            // Reflection failed, assume method doesn't exist
+        }
+        return methodExists;
+    }
+
+    private static @Nullable Method getMethod(BlockState state) {
+        Method opacityMethod = null;
+        try {
+            // Try to find the method with reflection
+            for (Method method : state.getClass().getMethods()) {
+                if (method.getName().equals("getOpacity") && method.getParameterCount() > 0) {
+                    opacityMethod = method;
+                    break;
+                }
+            }
+        } catch (Exception ignored) {
+            // Method search failed, continue
+        }
+        return opacityMethod;
     }
 
     /**
@@ -311,8 +348,6 @@ public class BlockRenderHelper {
                 fullCubeAndLightCount.incrementAndGet();
             }
         });
-
-        // No summary logging - removed to reduce log spam
     }
 
     /**
