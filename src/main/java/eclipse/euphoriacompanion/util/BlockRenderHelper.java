@@ -25,6 +25,7 @@ public class BlockRenderHelper {
     private static final BlockRenderCategory SOLID = BlockRenderCategory.SOLID;
     private static final BlockRenderCategory LIGHT_EMITTING = BlockRenderCategory.LIGHT_EMITTING;
     private static final BlockRenderCategory FULL_CUBE = BlockRenderCategory.FULL_CUBE;
+    private static final BlockRenderCategory BLOCK_ENTITY = BlockRenderCategory.BLOCK_ENTITY;
 
     // Cache to avoid repeated lookups
     private static final Map<Block, Set<BlockRenderCategory>> blockCategoriesCache = new ConcurrentHashMap<>();
@@ -34,6 +35,7 @@ public class BlockRenderHelper {
     private static final List<Block> solidBlocks = new ArrayList<>();
     private static final List<Block> lightEmittingBlocks = new ArrayList<>();
     private static final List<Block> fullCubeBlocks = new ArrayList<>();
+    private static final List<Block> blockEntityBlocks = new ArrayList<>();
 
     // For caching the model based full-cube checks
     private static final Map<Block, Boolean> fullCubeModelCache = new ConcurrentHashMap<>();
@@ -46,15 +48,8 @@ public class BlockRenderHelper {
 
         // Basic checks that apply to all versions
 
-        // Check if it's a block entity (never a full cube)
-        try {
-            if (state.hasBlockEntity()) {
-                fullCubeModelCache.put(block, false);
-                return false;
-            }
-        } catch (Exception ignored) {
-            // Continue with other checks if this fails
-        }
+        // We'll check if it's a block entity later, after other checks
+        // This allows block entities that are visually full cubes to be classified correctly
 
         // A full cube must be opaque
         if (!state.isOpaque()) {
@@ -245,12 +240,14 @@ public class BlockRenderHelper {
      */
     public static BlockRenderCategory getRenderCategory(Block block) {
         Set<BlockRenderCategory> categories = getCategories(block);
-        if (categories.contains(TRANSLUCENT)) {
-            return TRANSLUCENT;
-        } else if (categories.contains(LIGHT_EMITTING)) {
+        if (categories.contains(LIGHT_EMITTING)) {
             return LIGHT_EMITTING;
+        } else if (categories.contains(TRANSLUCENT)) {
+            return TRANSLUCENT;
         } else if (categories.contains(FULL_CUBE)) {
             return FULL_CUBE;
+        } else if (categories.contains(BLOCK_ENTITY)) {
+            return BLOCK_ENTITY;
         } else {
             return SOLID;
         }
@@ -291,6 +288,17 @@ public class BlockRenderHelper {
         // Check if it's a full cube by examining its model
         if (isFullCube(block, state)) {
             categories.add(FULL_CUBE);
+        }
+
+        // Check if it has a block entity
+        boolean hasBlockEntity = false;
+        try {
+            hasBlockEntity = state.hasBlockEntity();
+            if (hasBlockEntity) {
+                categories.add(BLOCK_ENTITY);
+            }
+        } catch (Exception ignored) {
+            // Continue if this check fails
         }
 
         // Cache the result
@@ -336,6 +344,8 @@ public class BlockRenderHelper {
                     lightEmittingBlocks.add(block);
                 } else if (category == FULL_CUBE) {
                     fullCubeBlocks.add(block);
+                } else if (category == BLOCK_ENTITY) {
+                    blockEntityBlocks.add(block);
                 }
             }
 
@@ -361,6 +371,7 @@ public class BlockRenderHelper {
         solidBlocks.clear();
         lightEmittingBlocks.clear();
         fullCubeBlocks.clear();
+        blockEntityBlocks.clear();
     }
 
     /**
@@ -376,6 +387,8 @@ public class BlockRenderHelper {
             return Collections.unmodifiableList(lightEmittingBlocks);
         } else if (category == FULL_CUBE) {
             return Collections.unmodifiableList(fullCubeBlocks);
+        } else if (category == BLOCK_ENTITY) {
+            return Collections.unmodifiableList(blockEntityBlocks);
         } else {
             return Collections.unmodifiableList(solidBlocks);
         }
@@ -392,6 +405,7 @@ public class BlockRenderHelper {
         result.put(SOLID, Collections.unmodifiableList(solidBlocks));
         result.put(LIGHT_EMITTING, Collections.unmodifiableList(lightEmittingBlocks));
         result.put(FULL_CUBE, Collections.unmodifiableList(fullCubeBlocks));
+        result.put(BLOCK_ENTITY, Collections.unmodifiableList(blockEntityBlocks));
         return result;
     }
 
