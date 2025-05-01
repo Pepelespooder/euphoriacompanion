@@ -24,7 +24,7 @@ public class EuphoriaCompanion implements ModInitializer {
      */
     public static void processShaderPacks() {
         Path gameDir = FabricLoader.getInstance().getGameDir();
-        ShaderPackProcessor.processShaderPacks(gameDir);
+        ShaderPackProcessor.processShaderPacksAsync(gameDir);
     }
 
 
