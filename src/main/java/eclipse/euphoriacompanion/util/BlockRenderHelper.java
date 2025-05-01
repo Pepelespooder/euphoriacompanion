@@ -291,7 +291,7 @@ public class BlockRenderHelper {
         }
 
         // Check if it has a block entity
-        boolean hasBlockEntity = false;
+        boolean hasBlockEntity;
         try {
             hasBlockEntity = state.hasBlockEntity();
             if (hasBlockEntity) {
