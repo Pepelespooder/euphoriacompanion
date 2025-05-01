@@ -33,6 +33,10 @@ public class EuphoriaCompanionClient implements ClientModInitializer {
                 // Register for world ready event for block categorization
                 setupWorldReadyHandlers();
             });
+
+            ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+                eclipse.euphoriacompanion.shader.ShaderPackProcessor.shutdown();
+            });
         } catch (Exception e) {
             EuphoriaCompanion.LOGGER.error("Failed to register client lifecycle events", e);
         }

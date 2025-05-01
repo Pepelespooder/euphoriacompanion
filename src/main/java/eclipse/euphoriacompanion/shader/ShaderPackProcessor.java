@@ -15,10 +15,20 @@ import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class ShaderPackProcessor {
     private static final Path DEBUG_LOG_FILE = Paths.get("logs", "shader_blocks_debug.log");
     private static PrintWriter debugWriter;
+    private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "ShaderPackProcessorThread");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    private static volatile boolean isProcessing = false;
 
     // Initialize debug writer
     private static void initDebugWriter() {
@@ -54,6 +64,31 @@ public class ShaderPackProcessor {
         if (debugWriter != null) {
             debugWriter.close();
         }
+    }
+
+    // Use CompletableFuture to handle async processing
+    public static void processShaderPacksAsync(Path gameDir) {
+        if (isProcessing) {
+            EuphoriaCompanion.LOGGER.info("Shader pack processing already in progress, skipping request");
+            CompletableFuture.completedFuture(null);
+            return;
+        }
+
+        isProcessing = true;
+        CompletableFuture.runAsync(() -> {
+            try {
+                EuphoriaCompanion.LOGGER.info("Starting shader pack processing in background thread");
+                processShaderPacks(gameDir);
+                EuphoriaCompanion.LOGGER.info("Shader pack processing complete");
+            } finally {
+                isProcessing = false;
+            }
+        }, EXECUTOR);
+    }
+
+    public static void shutdown() {
+        EXECUTOR.shutdown();
+        closeDebugWriter();
     }
 
     public static void processShaderPacks(Path gameDir) {
