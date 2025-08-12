@@ -608,6 +608,28 @@ public class ShaderPackProcessor {
                 writeDebug("Found property: " + baseBlockId + ":" + prop.name() + "=" + prop.value());
             }
         }
+
+        // Ensure all property states defined in blockPropertiesMap are represented
+        for (Map.Entry<String, Set<BlockPropertyExtractor.BlockStateProperty>> entry : blockPropertiesMap.entrySet()) {
+            String baseBlockId = entry.getKey();
+
+            // Normalize to include namespace
+            if (!baseBlockId.contains(":")) {
+                baseBlockId = "minecraft:" + baseBlockId;
+            }
+
+            Map<String, Set<String>> usedProps = blockPropertiesUsed.getOrDefault(baseBlockId, Collections.emptyMap());
+
+            for (BlockPropertyExtractor.BlockStateProperty prop : entry.getValue()) {
+                Set<String> usedValues = usedProps.get(prop.name());
+                if (usedValues == null || !usedValues.contains(prop.value())) {
+                    String blockStateId = baseBlockId + ":" + prop.name() + "=" + prop.value();
+                    if (shaderBlocks.add(blockStateId)) {
+                        writeDebug("Added missing block state: " + blockStateId);
+                    }
+                }
+            }
+        }
     }
 
 
